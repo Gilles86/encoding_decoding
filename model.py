@@ -88,7 +88,7 @@ class OrientationWei(EfficientCode):
     def estimate_theta_rep(self, m, sigma_rep):
         p = self.rep_likelihood(m, self.rep_grid, sigma_rep)
         print(p.sum(1))
-        theta_estimate = (np.angle((np.exp(1j*self.rep_grid*2)*p).sum(1)) % (2*np.pi))
+        theta_estimate = (np.angle((np.exp(1j*(self.rep_grid*2*np.pi))*p).sum(1)) % (2*np.pi) / (2*np.pi))
         return theta_estimate
 
     def estimate_likelihood(self, theta0, sigma_rep, rep_grid=None):

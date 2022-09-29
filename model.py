@@ -1,16 +1,17 @@
 import numpy as np
 import scipy.stats as ss
 from scipy import interpolate
+from scipy.integrate import simpson, trapezoid
 
 class EfficientCode(object):
 
     def __init__(self, stim_grid=None, rep_grid=None):
 
         if stim_grid is None:
-            stim_grid = np.linspace(0, 1, 500)
+            stim_grid = np.linspace(0, 1, 500, endpoint=False)
 
         if rep_grid is None:
-            rep_grid = np.linspace(0, 1, 500)
+            rep_grid = np.linspace(0, 1, 500, endpoint=False)
 
         self.stim_grid = stim_grid
         self.rep_grid = rep_grid
@@ -69,7 +70,7 @@ class OrientationWei(EfficientCode):
     def __init__(self, stim_grid=None, rep_grid=None, sigma_rep=.1):
 
         if stim_grid is None:
-            stim_grid = np.linspace(0, np.pi, 500)
+            stim_grid = np.linspace(0, np.pi, 500, endpoint=False)
 
         self.invcdf = interpolate.interp1d(self.cdf(stim_grid), stim_grid,
                                            fill_value='extrapolate',
@@ -87,7 +88,7 @@ class OrientationWei(EfficientCode):
         return np.clip(cdf, 1e-9, 1-1e-9)
 
 
-    def rep_likelihood(self, m, theta_rep, sigma_rep, norm=True):
+    def rep_likelihood(self, m, theta_rep, sigma_rep, norm=False):
         # eq. 10 in Wei & Stocker (2015): K(m, \tilde{\theta})
 
         # We work in 3D: dim(batch) x dim(m) x dim(theta)
@@ -103,7 +104,8 @@ class OrientationWei(EfficientCode):
         p = vonmises180(m, sigma_rep, theta_rep)
 
         if norm:
-            p = p / p.sum(2)[..., np.newaxis]
+            denom = simpson(p, theta_rep)
+            p = p / denom[..., np.newaxis]
 
         return p
 
@@ -115,26 +117,23 @@ class OrientationWei(EfficientCode):
 
         p = self.rep_likelihood(m, self.rep_grid, sigma_rep)
 
-        # Integrate over \tilde{\theta}
-        theta_estimate = (np.angle((np.exp(1j*(self.stim_grid_*2))*p).sum(2)) % (2*np.pi) / 2) % np.pi
-        return theta_estimate
+        Ftheta = np.exp(1j*(self.stim_grid_[np.newaxis, np.newaxis, :]*2))
+        integral = trapezoid(Ftheta*p, self.rep_grid, axis=2)
+        return np.angle(integral) % (2*np.pi) / 2
 
     def model_estimate_theta(self, theta0, sigma_rep=None):
         # eq. 12 in Wei & Stocker, 2015: <\hat{\theta}_L_2>_{\theta_0}
 
-        p = self.model_likelihood(theta0, self.rep_grid, sigma_rep)
+        p = self.model_likelihood(theta0, sigma_rep)
 
-        theta_estimate = (np.angle((np.exp(1j*(self.stim_grid_*2))*p).sum(2)) % (2*np.pi) / 2) % np.pi
+        Ftheta = np.exp(1j*(self.stim_grid_[np.newaxis, np.newaxis, :]*2))
+        integral = trapezoid(Ftheta*p, self.rep_grid)
+        return np.angle(integral) % (2*np.pi) / 2
 
-        return theta_estimate
-
-    def model_likelihood(self, theta0, theta_rep=None, sigma_rep=None):
+    def model_likelihood(self, theta0, sigma_rep=None):
         # eq. 13 in Wei & Stocker 2015: L_{\theta_0}(\tilde{\theta})
         if sigma_rep is None:
             sigma_rep = self.sigma_rep
-
-        if theta_rep is None:
-            theta_rep = self.rep_grid
 
         # dim(theta0) x dim(m) x dim(theta_rep)
         theta0 = np.atleast_1d(theta0)
@@ -144,23 +143,21 @@ class OrientationWei(EfficientCode):
             theta0_rep = theta0_rep[:, np.newaxis, np.newaxis]
 
         p_m_theta0 = self.rep_likelihood(self.rep_grid, theta0_rep, sigma_rep, norm=False)
-        print(p_m_theta0.shape)
-        p = p_m_theta0 * self.rep_likelihood(self.rep_grid, theta_rep, sigma_rep)
+        ll = self.rep_likelihood(self.rep_grid, self.rep_grid, sigma_rep)
+        p = p_m_theta0 * ll
 
-        return p.sum(1)[:, np.newaxis, :]
+        p = trapezoid(p, self.rep_grid, axis=1)[:, np.newaxis, :]
 
-    def estimate_likelihood(self, theta0, sigma_rep, rep_grid=None):
-        if rep_grid is None:
-            rep_grid = self.rep_grid
+        return p
 
-        theta0_rep = self.stim2rep(theta0)
 
-        m = self.rep_likelihood(rep_grid, theta0_rep, sigma_rep)
-
-        theta_rep = self.rep_likelihood(m, theta)
-        # We work in 2D: dim(m) x dim(theta)
+    def get_mean_posterior(self, p, integrand):
+        return (np.angle((np.exp(1j*(integrand*2))*p).sum(2)) % (2*np.pi) / 2) % np.pi
 
 
 
 def vonmises180(loc, sd, x):
     return ss.vonmises(loc=loc*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(x*np.pi*2)*np.pi*2.
+
+def vonmises180_sample(loc, sd, n=100):
+    return ss.vonmises(loc=loc*np.pi*2., kappa=1./(sd*np.pi*2.)**2).rvs(n) % (2*np.pi) / 2. / np.pi

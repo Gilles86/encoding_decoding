@@ -142,7 +142,7 @@ class OrientationWei(EfficientCode):
         if theta0_rep.ndim == 1:
             theta0_rep = theta0_rep[:, np.newaxis, np.newaxis]
 
-        p_m_theta0 = self.rep_likelihood(self.rep_grid, theta0_rep, sigma_rep, norm=False)
+        p_m_theta0 = self.rep_likelihood(theta0_rep, self.rep_grid, sigma_rep, norm=False)
         ll = self.rep_likelihood(self.rep_grid, self.rep_grid, sigma_rep)
         p = p_m_theta0 * ll
 

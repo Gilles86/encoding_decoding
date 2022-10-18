@@ -107,11 +107,7 @@ class OrientationWei(EfficientCode):
         if theta_rep.ndim == 1:
             theta_rep = theta_rep[np.newaxis, np.newaxis, :]
 
-        p = vonmises180(m, sigma_rep, theta_rep)
-
-        if norm:
-            denom = simpson(p, theta_rep)
-            p = p / denom[..., np.newaxis]
+        p = vonmises180(theta_rep, sigma_rep, m)
 
         return p
 

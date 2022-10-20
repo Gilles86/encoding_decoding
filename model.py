@@ -8,10 +8,10 @@ class EfficientCode(object):
     def __init__(self, stim_grid=None, rep_grid=None):
 
         if stim_grid is None:
-            stim_grid = np.linspace(0, 1, 500, endpoint=False)
+            stim_grid = np.linspace(0, 2*np.pi, 1000, endpoint=False)
 
         if rep_grid is None:
-            rep_grid = np.linspace(0, 1, 500, endpoint=False)
+            rep_grid = np.linspace(0, 1, 1000, endpoint=False)
 
         self.stim_grid = stim_grid
         self.rep_grid = rep_grid
@@ -70,7 +70,7 @@ class OrientationWei(EfficientCode):
     def __init__(self, stim_grid=None, rep_grid=None, sigma_rep=.1):
 
         if stim_grid is None:
-            stim_grid = np.linspace(0, np.pi, 500, endpoint=False)
+            stim_grid = np.linspace(0, 2*np.pi, 1000, endpoint=False)
 
         self.invcdf = interpolate.interp1d(self.cdf(stim_grid), stim_grid,
                                            fill_value='extrapolate',
@@ -81,17 +81,23 @@ class OrientationWei(EfficientCode):
         super().__init__(stim_grid=stim_grid, rep_grid=rep_grid)
 
     def prior(self, x):
-        return (2-np.abs(np.sin(2*x)))/ ((np.pi-1)) / 2.
+        return (2-np.abs(np.sin(2*x)))/ (np.pi-1)/4.0
 
     def cdf(self, x):
-        cdf = ((np.cos(x)**2) * np.sign(np.sin(2*x)) + 2*x) / (2*(np.pi-1.)) - (1 / (2*(np.pi-1.)))
-        return np.clip(cdf, 1e-9, 1-1e-9)
+        x_ = x % np.pi
+        cdf = np.clip(
+            (((np.cos(x_) ** 2) * np.sign(np.sin(2 * x_)) + 2 * x_) / (2 * (np.pi - 1.)) - (1 / (2 * (np.pi - 1.)))), 0,
+            1.) * .5
+        cdf += (x // np.pi) * .5
+        return cdf
 
 
     def rep_likelihood(self, m, theta_rep, sigma_rep, norm=False):
         # eq. 10 in Wei & Stocker (2015): K(m, \tilde{\theta})
 
         # We work in 3D: dim(batch) x dim(m) x dim(theta)
+
+        ## This is in sensory space (symmetric)
         m = np.atleast_1d(m)
         theta_rep = np.atleast_1d(theta_rep)
         
@@ -112,23 +118,16 @@ class OrientationWei(EfficientCode):
     def subject_estimate_theta(self, m, sigma_rep=None):
         # eq. 11 in Wei & Stocker, 2015: \tilde{\theta}_{L_2}(m)
 
+        # This is the posterior estimate of a subject who has a specefic representation (m), always the same for the same m. But omne theta0 never leads to the same m
+
         if sigma_rep is None:
             sigma_rep = self.sigma_rep
 
         p = self.rep_likelihood(m, self.rep_grid, sigma_rep)
 
-        Ftheta = np.exp(1j*(self.stim_grid_[np.newaxis, np.newaxis, :]*2))
+        Ftheta = np.exp(1j*(self.stim_grid_[np.newaxis, np.newaxis, :]))
         integral = trapezoid(Ftheta*p, self.rep_grid, axis=2)
-        return np.angle(integral) % (2*np.pi) / 2
-
-    def model_estimate_theta(self, theta0, sigma_rep=None):
-        # eq. 12 in Wei & Stocker, 2015: <\hat{\theta}_L_2>_{\theta_0}
-
-        p = self.model_likelihood(theta0, sigma_rep)
-
-        Ftheta = np.exp(1j*(self.stim_grid_[np.newaxis, np.newaxis, :]*2))
-        integral = trapezoid(Ftheta*p, self.rep_grid)
-        return np.angle(integral) % (2*np.pi) / 2
+        return np.angle(integral) % (2*np.pi)
 
     def model_likelihood(self, theta0, sigma_rep=None):
         # eq. 13 in Wei & Stocker 2015: L_{\theta_0}(\tilde{\theta})
@@ -142,18 +141,26 @@ class OrientationWei(EfficientCode):
         if theta0_rep.ndim == 1:
             theta0_rep = theta0_rep[:, np.newaxis, np.newaxis]
 
-        p_m_theta0 = self.rep_likelihood(theta0_rep, self.rep_grid, sigma_rep, norm=False)
-        ll = self.rep_likelihood(self.rep_grid, self.rep_grid, sigma_rep)
+        p_m_theta0 = vonmises180(theta0_rep, sigma_rep, self.rep_grid[np.newaxis, :, np.newaxis])
+
+        # p_m_theta0 = self.rep_likelihood(theta0_rep, self.rep_grid[np.newaxis, :, np.newaxis], sigma_rep, norm=False)
+        ll = self.rep_likelihood(self.rep_grid[np.newaxis, :, np.newaxis], self.rep_grid[np.newaxis, np.newaxis, :], sigma_rep)
         p = p_m_theta0 * ll
 
         p = trapezoid(p, self.rep_grid, axis=1)[:, np.newaxis, :]
 
         return p
 
+    def model_estimate_theta(self, theta0, sigma_rep=None):
+        # eq. 12 in Wei & Stocker, 2015: <\hat{\theta}_L_2>_{\theta_0}
 
-    def get_mean_posterior(self, p, integrand):
-        return (np.angle((np.exp(1j*(integrand*2))*p).sum(2)) % (2*np.pi) / 2) % np.pi
+        ## This is the average posterior estimate given a theta0. Also fixed
 
+        p = self.model_likelihood(theta0, sigma_rep)
+
+        Ftheta = np.exp(1j*(self.stim_grid_[np.newaxis, np.newaxis, :]))
+        integral = trapezoid(Ftheta*p, self.rep_grid, axis=2)
+        return np.angle(integral) % (2*np.pi)
 
 
 def vonmises180(loc, sd, x):

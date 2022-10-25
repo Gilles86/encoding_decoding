@@ -107,7 +107,7 @@ class OrientationWei(EfficientCode):
         if theta_rep.ndim == 1:
             theta_rep = theta_rep[np.newaxis, np.newaxis, :]
 
-        p = vonmises180(theta_rep, sigma_rep, m)
+        p = sensory_noise_dist(theta_rep, sigma_rep, m)
 
         return p
 
@@ -137,7 +137,7 @@ class OrientationWei(EfficientCode):
         if theta0_rep.ndim == 1:
             theta0_rep = theta0_rep[:, np.newaxis, np.newaxis]
 
-        p_m_theta0 = vonmises180(theta0_rep, sigma_rep, self.rep_grid[np.newaxis, :, np.newaxis])
+        p_m_theta0 = sensory_noise_dist(theta0_rep, sigma_rep, self.rep_grid[np.newaxis, :, np.newaxis])
 
         # p_m_theta0 = self.rep_likelihood(theta0_rep, self.rep_grid[np.newaxis, :, np.newaxis], sigma_rep, norm=False)
         ll = self.rep_likelihood(self.rep_grid[np.newaxis, :, np.newaxis], self.rep_grid[np.newaxis, np.newaxis, :], sigma_rep)
@@ -158,9 +158,42 @@ class OrientationWei(EfficientCode):
         integral = trapezoid(Ftheta*p, self.rep_grid, axis=2)
         return np.angle(integral) % (2*np.pi)
 
+    def theta_hat_dist(self, theta0, sigma_rep=None):
 
-def vonmises180(loc, sd, x):
+        if sigma_rep is None:
+            sigma_rep = self.sigma_rep
+
+        theta0_ = self.stim2rep(theta0)
+        theta0_ = np.atleast_1d(theta0_)
+        
+        # Calculate estimated thetas for the equally-spaced sensory grid rep_grid (n_theta0xn_grid)
+        theta_est_ = self.subject_estimate_theta(self.rep_grid, sigma_rep=sigma_rep).squeeze()
+
+        # We make a lookup table that maps from estimated thetas to corresponding ms
+        # f^{-1}(\hat{\theta}) -> m
+        theta_est_inv = interpolate.interp1d(theta_est_, self.rep_grid, fill_value='extrapolate', bounds_error=False)
+
+        # f'(m)
+        theta_est_dx_ = np.gradient(theta_est_, self.rep_grid)
+        theta_est_dx = interpolate.interp1d(self.rep_grid, theta_est_dx_, fill_value='extrapolate', bounds_error=False)
+
+        # Now, for the equally-spaced orientations in model.stim_grid, we calculate
+        # the density of p(\hat{theta} | \theta_0)
+        # \frac{p(f^{-1}(\hat{\theta})|\theta_0)}{f'(f^{-1}(\hat{\theta}))}$
+        
+        # This grid of ms corresponds to possible theta-hats in the grid model.stim_grid
+        m_grid = theta_est_inv(self.stim_grid)
+
+        # theta0xstim_grid
+        pm = sensory_noise_dist(theta0_[:, np.newaxis], sigma_rep, m_grid[np.newaxis, :])
+
+        # theta0xstim_grid
+        ptheta = pm/theta_est_dx(theta_est_inv(self.stim_grid))[np.newaxis, :]
+
+        return ptheta
+
+def sensory_noise_dist(loc, sd, x):
     return ss.vonmises(loc=loc*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(x*np.pi*2)*np.pi*2.
 
-def vonmises180_sample(loc, sd, n=100):
+def sensory_noise_dist_sample(loc, sd, n=100):
     return ss.vonmises(loc=loc*np.pi*2., kappa=1./(sd*np.pi*2.)**2).rvs(n) % (2*np.pi) / 2. / np.pi

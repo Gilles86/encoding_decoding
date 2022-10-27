@@ -173,7 +173,6 @@ class OrientationWei(EfficientCode):
         # f^{-1}(\hat{\theta}) -> m
         theta_est_inv = interpolate.interp1d(theta_est_, self.rep_grid, fill_value='extrapolate', bounds_error=False)
 
-        # f'(m)
         theta_est_dx_ = np.gradient(theta_est_, self.rep_grid)
         theta_est_dx = interpolate.interp1d(self.rep_grid, theta_est_dx_, fill_value='extrapolate', bounds_error=False)
 

@@ -63,8 +63,6 @@ class EfficientCode(object):
             theta_rep = np.atleast_2d(theta_rep).T
 
 
-
-
 class OrientationWei(EfficientCode):
 
     def __init__(self, stim_grid=None, rep_grid=None, sigma_rep=.1):

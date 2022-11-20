@@ -4,65 +4,119 @@ from scipy import interpolate
 from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 
-class perception(object):
+
+stim_grid = np.linspace(0, np.pi*2., 500, True)
+rep_grid = np.linspace(0, 1., 500, True)
+
+def prior(x):
+    return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 4.0
+
+def cdf(x):
+    cdf = integrate.cumtrapz(prior(x), stim_grid, initial=0.0)
+    return cdf
+
+def stimulus_noise(x, sd, grid):
+    return ss.vonmises(loc=x, kappa=1/sd**2).pdf(grid)
+
+def sensory_noise(m, sd, grid):
+    return ss.vonmises(loc=m*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(grid*np.pi*2)*np.pi*2.
+
+# Take input orientation and gives the decoded distribution
+def get_thetahat_dist(theta0, sigma_stim, sigma_rep):
+
+    theta0 = np.atleast_1d(theta0)
+    # theta0 x theta_gen x m_gen
+    # Add stimulus noise to get distribution of thetas given theta0 - theta0 x theta_gen
+    p_theta_given_theta0 = stimulus_noise(theta0[:, np.newaxis], sd=sigma_stim, grid=stim_grid[np.newaxis, :])
+    # Add sensory noise to see what ms you get given a theta 0 - theta0 x theta_gen_rep x m_gen
+    p_m_given_theta0 = sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], sd=sigma_rep,
+                                     grid=rep_grid[np.newaxis, np.newaxis, :])
+
+    # Combine sensory and stimulus noise
+    p_m_given_theta0 = p_m_given_theta0 * p_theta_given_theta0[..., np.newaxis]
+
+    # Integrate out different thetas, so we just have ms given theta0
+    p_m_given_theta0 = trapezoid(p_m_given_theta0, stim_grid, axis=1)
+
+    # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
+    p_m_given_theta = stimulus_noise(stim_grid[:, np.newaxis], sd=sigma_stim, grid=stim_grid[np.newaxis, :])[
+                          ..., np.newaxis] * \
+                      sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], sd=sigma_rep,
+                                    grid=rep_grid[np.newaxis, np.newaxis, :])
+
+    # Integrate out the realized thetas
+    p_m_given_theta = trapezoid(p_m_given_theta, stim_grid, axis=1)
+
+    # Multiply with prior on thetas
+    p_theta_given_m = p_m_given_theta * prior(stim_grid)[:, np.newaxis]
+
+    # Normalize with p(m)
+    p_theta_given_m = p_theta_given_m / trapezoid(p_theta_given_m, stim_grid, axis=0)[np.newaxis, :]
+
+    # theta0 x theta_tilde x m
+    # Probability of estimating \hat{theta} given theta0
+    p_thetaest_given_theta0 = p_m_given_theta0[:, np.newaxis, :] * p_theta_given_m[np.newaxis, ...]
+
+    # Get rid of m
+    p_thetaest_given_theta0 = trapezoid(p_thetaest_given_theta0, rep_grid, axis=2)
+
+    # normalize (99% sure that not necessary)
+    # p_thetaest_given_theta0 /= trapezoid(p_thetaest_given_theta0, stim_grid, axis=1)[:, np.newaxis]
+
+    return p_thetaest_given_theta0
+
+# Takes in orientation and gives mean decoded orientation
+def expected_thetahat_theta0(theta0, sigma_stim, sigma_rep):
+
+    p_thetaest_given_theta0 = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
+
+    return np.angle(trapezoid(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_grid, axis=1)) % (2*np.pi)
 
 
-    def __init__(self, stim_grid=None, rep_grid=None):
+def value_function1(x):
+    return (20-18*np.abs(np.sin(2*x)))
 
-        if stim_grid is None:
-            stim_grid = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+def value_function2(x):
+    return 2+abs(18-abs(18-abs(18-abs(18-abs(18-abs(18-abs(18-x*72/np.pi)))))))
 
-        if rep_grid is None:
-            rep_grid = np.linspace(0, 1, 1000, endpoint=False)
+def value_function3(x):
+    return 2+abs(18*np.cos(2*x))
 
 
-        self.stim_grid = stim_grid
-        self.rep_grid = rep_grid
+def value_function4(x):
+    return 2 + abs(18 * np.sin(2 * x))
 
-        self.rep_grid_ = self.cdf(stim_grid)
-        self.stim_grid_ = self.invcdf(rep_grid)
+def value_function5(x):
+    return 20 - abs(18 - abs(18 - abs(18 - abs(18 - abs(18 - abs(18 - abs(18 - x * 72 / np.pi)))))))
 
-    def prior(self, x):
-        ...
+def value_function6(x):
+    return 20 - abs(18 * np.cos(2 * x))
 
-    def cdf(self, x):
-        x_ = x % np.pi
-        return integrate.cumtrapz(self.prior(x_), self.stim_grid, initial=0.0)
 
-    def invcdf(self, x):
-        return np.gradient(self.cdf(self.stim_grid))
-    
-    def stim2rep(self, x_stim, p_stim=None):
+def get_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow=True):
 
-        x_rep =  self.cdf(x_stim)
+    x_stim = np.array(stim_grid)
+    p_stim = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
 
-        if p_stim is None:
-            return x_rep
+    assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
 
-        p_rep = p_stim / self.prior(x_stim)
+    # For every bin in x_stim, calculate the probability mass within that bin
+    dx = x_stim[..., 1:] - x_stim[..., :-1]
+    p_mass = ((p_stim[..., 1:] + p_stim[..., :-1]) / 2) * dx
 
-        return x_rep, p_rep
+    # Get the center of every bin
+    x_value = value_function(x_stim[:-1] + dx / 2.)
 
-    def rep2stim(self, x_rep, p_rep=None):
+    if slow:
+        ps = []
+        for ix in range(len(p_stim)):
+            h, edges = np.histogram(x_value, bins=bins, weights=p_mass[ix], density=True)
+            ps.append(h)
 
-        x_stim = self.invcdf(x_rep)
+        ps = np.array(ps)
+        bin_centers = (edges[1:] + edges[:-1]) / 2
 
-        if p_rep is None:
-            return x_stim
+    return bin_centers, ps
 
-        p_stim = p_rep * self.prior(x_stim)
 
-        return x_stim, p_stim
-
-    def subject_likelihood(self, m, theta_rep):
-
-        # The output is dim(m) x dim(theta)
-        m = np.array(m)
-        if m.ndim != 2:
-            m = np.atleast_2d(m).T
-
-        # The output is dim(m) x dim(theta)
-        theta_rep = np.array(theta_rep)
-        if theta_rep.ndim != 2:
-            theta_rep = np.atleast_2d(theta_rep).T
 

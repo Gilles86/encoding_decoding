@@ -100,7 +100,7 @@ def value_function_ori(x, type):
     return value_function
 
 
-def safe_value_dist(theta0, sigma_stim, sigma_rep, type, bins=20, slow=True):
+def safe_value_dist(theta0, sigma_stim, sigma_rep, type, bins=100, slow=True):
 
     x_stim = np.array(stim_grid)
     p_stim = bayesian_decoding(theta0, sigma_stim, sigma_rep)
@@ -126,7 +126,7 @@ def safe_value_dist(theta0, sigma_stim, sigma_rep, type, bins=20, slow=True):
 
     return bin_centers, ps
 
-def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=20, slow=True):
+def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=100, slow=True):
 
     x_stim = np.array(stim_grid)
     p_stim = bayesian_decoding(theta1, sigma_stim, sigma_rep)
@@ -153,7 +153,7 @@ def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=20, sl
         risky_value = bin_centers*risk_prob
         p_risky = ps/risk_prob
 
-        p_risky_ = interpolate.interp1d(risky_value, p_risky, fill_value='extrapolate', bounds_error=False)
+        p_risky_ = interpolate.interp1d(risky_value, p_risky, bounds_error=False, fill_value=0)
         p_risky = p_risky_(bin_centers)
 
     return bin_centers, p_risky

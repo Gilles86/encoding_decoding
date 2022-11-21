@@ -22,7 +22,7 @@ def sensory_noise(m, sd, grid):
     return ss.vonmises(loc=m*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(grid*np.pi*2)*np.pi*2.
 
 # Take input orientation and gives the decoded distribution
-def get_thetahat_dist(theta0, sigma_stim, sigma_rep):
+def MI_efficient_encoding(theta0, sigma_stim, sigma_rep):
 
     theta0 = np.atleast_1d(theta0)
     # theta0 x theta_gen x m_gen
@@ -47,6 +47,11 @@ def get_thetahat_dist(theta0, sigma_stim, sigma_rep):
     # Integrate out the realized thetas
     p_m_given_theta = trapezoid(p_m_given_theta, stim_grid, axis=1)
 
+    return p_m_given_theta0, p_m_given_theta
+
+# Take input orientation and gives the decoded distribution
+def bayesian_decoding(theta0, sigma_stim, sigma_rep):
+    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, sigma_stim, sigma_rep)
     # Multiply with prior on thetas
     p_theta_given_m = p_m_given_theta * prior(stim_grid)[:, np.newaxis]
 
@@ -65,38 +70,41 @@ def get_thetahat_dist(theta0, sigma_stim, sigma_rep):
 
     return p_thetaest_given_theta0
 
+
 # Takes in orientation and gives mean decoded orientation
 def expected_thetahat_theta0(theta0, sigma_stim, sigma_rep):
-
-    p_thetaest_given_theta0 = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
+    p_thetaest_given_theta0 = bayesian_decoding(theta0, sigma_stim, sigma_rep)
+    #p_thetaest_given_theta0 = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
 
     return np.angle(trapezoid(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_grid, axis=1)) % (2*np.pi)
 
+def value_function_ori(x, type):
+    if type == "prior":
+        value_function = (10-9*np.abs(np.sin(2*x)))
 
-def value_function1(x):
-    return (20-18*np.abs(np.sin(2*x)))
+    if type == "linearPrior":
+        value_function = 1+abs(9-abs(9-abs(9-abs(9-abs(9-abs(9-abs(9-x*36/np.pi)))))))
 
-def value_function2(x):
-    return 2+abs(18-abs(18-abs(18-abs(18-abs(18-abs(18-abs(18-x*72/np.pi)))))))
+    if type == "curvedPrior":
+        value_function = 1+abs(9*np.cos(2*x))
 
-def value_function3(x):
-    return 2+abs(18*np.cos(2*x))
+    if type == "inversePrior":
+        value_function = 1 + abs(9 * np.sin(2 * x))
 
+    if type == "inverseLinearPrior":
+        value_function = 10 - abs(9 - abs(9 - abs(9 - abs(9 - abs(9 - abs(9 - abs(9 - x * 36 / np.pi)))))))
 
-def value_function4(x):
-    return 2 + abs(18 * np.sin(2 * x))
+    if type == "inverseCurvedPrior":
+        value_function = 10 - abs(9 * np.cos(2 * x))
 
-def value_function5(x):
-    return 20 - abs(18 - abs(18 - abs(18 - abs(18 - abs(18 - abs(18 - abs(18 - x * 72 / np.pi)))))))
-
-def value_function6(x):
-    return 20 - abs(18 * np.cos(2 * x))
+    return value_function
 
 
-def safe_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow=True):
+def safe_value_dist(theta0, sigma_stim, sigma_rep, type, bins=20, slow=True):
 
     x_stim = np.array(stim_grid)
-    p_stim = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
+    p_stim = bayesian_decoding(theta0, sigma_stim, sigma_rep)
+    # p_stim = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
 
     assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
 
@@ -105,7 +113,7 @@ def safe_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow
     p_mass = ((p_stim[..., 1:] + p_stim[..., :-1]) / 2) * dx
 
     # Get the center of every bin
-    x_value = value_function(x_stim[:-1] + dx / 2.)
+    x_value = value_function_ori(x_stim[:-1] + dx / 2., type)
 
     if slow:
         ps = []
@@ -118,10 +126,11 @@ def safe_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow
 
     return bin_centers, ps
 
-def risky_value_dist(theta1, sigma_stim, sigma_rep, value_function, risk_prob, bins=20, slow=True):
+def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=20, slow=True):
 
     x_stim = np.array(stim_grid)
-    p_stim = get_thetahat_dist(theta1, sigma_stim, sigma_rep)
+    p_stim = bayesian_decoding(theta1, sigma_stim, sigma_rep)
+    #p_stim = get_thetahat_dist(theta1, sigma_stim, sigma_rep)
 
     assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
 
@@ -130,7 +139,7 @@ def risky_value_dist(theta1, sigma_stim, sigma_rep, value_function, risk_prob, b
     p_mass = ((p_stim[..., 1:] + p_stim[..., :-1]) / 2) * dx
 
     # Get the center of every bin
-    x_value = value_function(x_stim[:-1] + dx / 2.)
+    x_value = value_function_ori(x_stim[:-1] + dx / 2., type)
 
     if slow:
         ps = []
@@ -149,7 +158,17 @@ def risky_value_dist(theta1, sigma_stim, sigma_rep, value_function, risk_prob, b
 
     return bin_centers, p_risky
 
+# Calculate how often distribution 1 is larger than distribution 2
+def diff_dist(grid, p1, p2):
+    # grid: 1d
+    # p1/p2: n_orienations x n(grid)
+    cdf2 = integrate.cumtrapz(p2, grid, initial=0.0, axis=1)
 
 
+    # for every grid point, distribution 1 is bigger than distribution 2
+    # with a probability of being that value times the probability that dist
+    # 2 is lower than that value
+    p = p1*cdf2
 
-
+    # Cummulative probability
+    return integrate.trapz(p, grid)

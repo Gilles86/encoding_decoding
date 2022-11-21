@@ -93,7 +93,7 @@ def value_function6(x):
     return 20 - abs(18 * np.cos(2 * x))
 
 
-def get_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow=True):
+def safe_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow=True):
 
     x_stim = np.array(stim_grid)
     p_stim = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
@@ -117,6 +117,39 @@ def get_value_dist(theta0, sigma_stim, sigma_rep, value_function, bins=20, slow=
         bin_centers = (edges[1:] + edges[:-1]) / 2
 
     return bin_centers, ps
+
+def risky_value_dist(theta1, sigma_stim, sigma_rep, value_function, risk_prob, bins=20, slow=True):
+
+    x_stim = np.array(stim_grid)
+    p_stim = get_thetahat_dist(theta1, sigma_stim, sigma_rep)
+
+    assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
+
+    # For every bin in x_stim, calculate the probability mass within that bin
+    dx = x_stim[..., 1:] - x_stim[..., :-1]
+    p_mass = ((p_stim[..., 1:] + p_stim[..., :-1]) / 2) * dx
+
+    # Get the center of every bin
+    x_value = value_function(x_stim[:-1] + dx / 2.)
+
+    if slow:
+        ps = []
+        for ix in range(len(p_stim)):
+            h, edges = np.histogram(x_value, bins=bins, weights=p_mass[ix], density=True)
+            ps.append(h)
+
+        ps = np.array(ps)
+        bin_centers = (edges[1:] + edges[:-1]) / 2
+
+        risky_value = bin_centers*risk_prob
+        p_risky = ps/risk_prob
+
+        p_risky_ = interpolate.interp1d(risky_value, p_risky, fill_value='extrapolate', bounds_error=False)
+        p_risky = p_risky_(bin_centers)
+
+    return bin_centers, p_risky
+
+
 
 
 

@@ -80,22 +80,22 @@ def expected_thetahat_theta0(theta0, sigma_stim, sigma_rep):
 
 def value_function_ori(x, type):
     if type == "prior":
-        value_function = (10-9*np.abs(np.sin(2*x)))
+        value_function = (12-11*np.abs(np.sin(2*x)))
 
     if type == "linearPrior":
-        value_function = 1+abs(9-abs(9-abs(9-abs(9-abs(9-abs(9-abs(9-x*36/np.pi)))))))
+        value_function = 1+abs(11-abs(11-abs(11-abs(11-abs(11-abs(11-abs(11-x*44/np.pi)))))))
 
     if type == "curvedPrior":
-        value_function = 1+abs(9*np.cos(2*x))
+        value_function = 1+abs(11*np.cos(2*x))
 
     if type == "inversePrior":
-        value_function = 1 + abs(9 * np.sin(2 * x))
+        value_function = 1 + abs(11 * np.sin(2 * x))
 
     if type == "inverseLinearPrior":
-        value_function = 10 - abs(9 - abs(9 - abs(9 - abs(9 - abs(9 - abs(9 - abs(9 - x * 36 / np.pi)))))))
+        value_function = 12 - abs(11 - abs(11 - abs(11 - abs(11 - abs(11 - abs(11 - abs(11 - x * 44 / np.pi)))))))
 
     if type == "inverseCurvedPrior":
-        value_function = 10 - abs(9 * np.cos(2 * x))
+        value_function = 12 - abs(11 * np.cos(2 * x))
 
     return value_function
 
@@ -160,6 +160,7 @@ def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=100, s
 
 # Calculate how often distribution 1 is larger than distribution 2
 def diff_dist(grid, p1, p2):
+    p = []
     # grid: 1d
     # p1/p2: n_orienations x n(grid)
     cdf2 = integrate.cumtrapz(p2, grid, initial=0.0, axis=1)
@@ -168,7 +169,8 @@ def diff_dist(grid, p1, p2):
     # for every grid point, distribution 1 is bigger than distribution 2
     # with a probability of being that value times the probability that dist
     # 2 is lower than that value
-    p = p1*cdf2
+    prob = p1*cdf2
+    p.append(prob)
 
     # Cummulative probability
     return integrate.trapz(p, grid)

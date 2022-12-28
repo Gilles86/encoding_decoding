@@ -7,17 +7,33 @@ from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 
 experiment = "noBoundaryEffects" #"bothSideTruncated" #oneSideTruncated, bothSideTruncated, bothSideFolded
 
-value_rep_bins = 200
-ori_bins = 1000
-ori_range = np.pi*2.
-# This causes the stimulus_val_noise plots to be discotinuous as the function is not bijective
-stim_grid = np.linspace(0, np.pi*2., ori_bins, True)
+value_rep_bins = 300
+ori_bins = 300
+stim_space = np.pi * 2.
+stim_grid = np.linspace(0, stim_space, ori_bins, True)
+# As rep grid is for value representation, same no of points as bins for value
 rep_grid = np.linspace(0, 1., 300, True)
 
-# Getting a prior over orientation given a grid (x).
-# This is always going to be on the stim_grid and the stim_grid should be between 0 and 2pi
+
+# Getting a prior over orientation given a grid (x)
 def prior_ori(x):
-    return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 4.0
+    if stim_space == np.pi * 2.:
+        return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 4.0
+
+    if stim_space == np.pi:
+        return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 2.0
+
+    if stim_space == np.pi / 2.:
+        return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 1.0
+
+    if stim_space == np.pi / 4.:
+        return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) * 2.0
+
+
+# Evaluates the number of global minimas in the prior_ori function.
+prior_ori_repititions = sum(np.r_[True, prior_ori(stim_grid)[1:] < prior_ori(stim_grid)[:-1]] & np.r_[
+    prior_ori(stim_grid)[:-1] < prior_ori(stim_grid)[1:], True])
+
 
 # Getting a value function given a grid of orientations (stim_grid for example). Always between 0 and 2pi.
 def value_function_ori(x, type):

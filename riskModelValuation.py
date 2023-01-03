@@ -44,7 +44,7 @@ def ori_to_val_dist(grid, p, type):
     else:
         p_dist = p
     p_dist = np.array(p_dist)
-    grid = grid[np.newaxis, :]
+    # grid = grid[np.newaxis, :]
     grid = np.array(grid)
 
     # For every bin in x_stim, calculate the probability mass within that bin

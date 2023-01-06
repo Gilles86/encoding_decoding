@@ -5,9 +5,9 @@ from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 # from scipy.stats import gaussian_kde
 
-
-value_rep_bins = 500
-stim_grid = np.linspace(0, np.pi*2., 500, True)
+experiment = "noBoundaryEffects"
+value_rep_bins = 1000
+stim_grid = np.linspace(0, np.pi*2., value_rep_bins, True)
 # As rep grid is for value representation, same no of points as bins for value
 rep_grid = np.linspace(0, 1., 300, True)
 
@@ -96,8 +96,21 @@ def stimulus_val_noise(x, sd, grid, type):
 
 # This noise will be added to the representation space of the variable being encoded.
 # This variable is value in this case
+# It should not be a vonmises anymore. In fact what it should be depends on the specific type of experimental setup we
+# design in my opinion. If participants are always just showed one quadrant, makes more sense that it is a truncated
+# normal in my opinion. hOWEVER, IF IT IS 2 QUADRANTS, SHOULD be a recursive value that repeats back in opposite direction.
 def sensory_noise(m, sd, grid):
-    return ss.vonmises(loc=m*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(grid*np.pi*2)*np.pi*2.
+    if experiment == "bothSideTruncated":
+        # This one is when experiment is shown only within a 45degree angle
+        return ss.truncnorm.pdf(grid,(0.0 - m) / sd, (1.0 -m) / sd, m, sd)
+    if experiment == "noBoundaryEffects":
+        # We assume that they represent the information here totally and the bounds do not mean truncation but rather,
+        # they jusst shift the boundary values to include 5 standard deviations from the noise, whatever the noise is
+        return ss.norm.pdf(grid, m+5*sd*(0.5-m), sd)
+    # else if experiment == "oneSideTruncated":
+    #     return ss.truncnorm.pdf(grid, (0.0 - m) / sd, (np.inf - m) / sd, m, sd)
+        # This one is when experiment is shown only within a 90degree angle
+
 
 # Takes in the orientation grid and gives out the cdf over values
 def cdf_val(type):

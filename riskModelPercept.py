@@ -150,6 +150,8 @@ def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=100, s
         ps = np.array(ps)
         bin_centers = (edges[1:] + edges[:-1]) / 2
 
+        # So far the distribution of values are calculated without any heed to risk dependence
+        # The next step assumes that the participant calculates the expected value by multiplying with prob.
         risky_value = bin_centers*risk_prob
         p_risky = ps/risk_prob
 

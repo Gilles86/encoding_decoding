@@ -5,7 +5,7 @@ from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 # from scipy.stats import gaussian_kde
 
-experiment = "noBoundaryEffects"
+experiment = "bothSideTruncated"
 value_rep_bins = 1000
 stim_grid = np.linspace(0, np.pi*2., value_rep_bins, True)
 # As rep grid is for value representation, same no of points as bins for value

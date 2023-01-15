@@ -4,9 +4,9 @@ from scipy import interpolate
 from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 
-
+# We need 1500 grid points in stim_grid to see behavior properly for small noise regimes that we are interested in
 stim_grid = np.linspace(0, np.pi*2., 500, True)
-rep_grid = np.linspace(0, 1., 500, True)
+rep_grid = np.linspace(0, 1., 300, True)
 
 def prior(x):
     return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 4.0

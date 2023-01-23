@@ -8,8 +8,11 @@ from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 stim_grid = np.linspace(0, np.pi*2., 500, True)
 rep_grid = np.linspace(0, 1., 300, True)
 
+max_val = 81
+min_val = 1
+
 def prior(x):
-    return (2 - np.abs(np.sin(2 * x))) / (np.pi - 1) / 4.0
+    return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
 
 def cdf(x):
     cdf = integrate.cumtrapz(prior(x), stim_grid, initial=0.0)
@@ -80,28 +83,30 @@ def expected_thetahat_theta0(theta0, sigma_stim, sigma_rep):
 
 def value_function_ori(x, type):
     if type == "prior":
-        value_function = (12-11*np.abs(np.sin(2*x)))
+        value_function = (max_val-(max_val-min_val)*np.abs(np.sin(2*x)))
 
     if type == "linearPrior":
-        value_function = 1+abs(11-abs(11-abs(11-abs(11-abs(11-abs(11-abs(11-x*44/np.pi)))))))
+        value_function = min_val+abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-x*(max_val - min_val)*4/np.pi)))))))
 
     if type == "curvedPrior":
-        value_function = 1+abs(11*np.cos(2*x))
+        value_function = min_val+abs((max_val-min_val)*np.cos(2*x))
 
     if type == "inversePrior":
-        value_function = 1 + abs(11 * np.sin(2 * x))
+        value_function = min_val + abs((max_val-min_val) * np.sin(2 * x))
 
     if type == "inverseLinearPrior":
-        value_function = 12 - abs(11 - abs(11 - abs(11 - abs(11 - abs(11 - abs(11 - abs(11 - x * 44 / np.pi)))))))
+        value_function = max_val - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - x * (max_val - min_val)*4 / np.pi)))))))
 
     if type == "inverseCurvedPrior":
-        value_function = 12 - abs(11 * np.cos(2 * x))
+        value_function = max_val - abs((max_val-min_val) * np.cos(2 * x))
 
     return value_function
 
 
-def safe_value_dist(theta0, sigma_stim, sigma_rep, type, bins=100, slow=True):
+def safe_value_dist(theta0, sigma_stim, sigma_rep, type, interpolation_kind='linear', bins=100, slow=True):
 
+
+    # bins = np.linspace(1, max_val, n_bins)
     x_stim = np.array(stim_grid)
     p_stim = bayesian_decoding(theta0, sigma_stim, sigma_rep)
     # p_stim = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
@@ -124,41 +129,27 @@ def safe_value_dist(theta0, sigma_stim, sigma_rep, type, bins=100, slow=True):
         ps = np.array(ps)
         bin_centers = (edges[1:] + edges[:-1]) / 2
 
-    return bin_centers, ps
+        # return bin_centers, ps
 
-def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, bins=100, slow=True):
+        f = interpolate.interp1d(bin_centers, ps, axis=1,
+                                 kind=interpolation_kind, fill_value='extrapolate')
 
-    x_stim = np.array(stim_grid)
-    p_stim = bayesian_decoding(theta1, sigma_stim, sigma_rep)
-    #p_stim = get_thetahat_dist(theta1, sigma_stim, sigma_rep)
+        ps = f(edges)
 
-    assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
+        ps /= np.trapz(ps, edges, axis=1)[:, np.newaxis]
 
-    # For every bin in x_stim, calculate the probability mass within that bin
-    dx = x_stim[..., 1:] - x_stim[..., :-1]
-    p_mass = ((p_stim[..., 1:] + p_stim[..., :-1]) / 2) * dx
+    return edges, ps
 
-    # Get the center of every bin
-    x_value = value_function_ori(x_stim[:-1] + dx / 2., type)
+def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=100, slow=True):
 
-    if slow:
-        ps = []
-        for ix in range(len(p_stim)):
-            h, edges = np.histogram(x_value, bins=bins, weights=p_mass[ix], density=True)
-            ps.append(h)
+    x_value, p_value = safe_value_dist(theta1, sigma_stim, sigma_rep, type, interpolation_kind, bins, slow)
 
-        ps = np.array(ps)
-        bin_centers = (edges[1:] + edges[:-1]) / 2
+    risky_value = x_value*risk_prob
+    p_risky = p_value/risk_prob
+    p_risky_ = interpolate.interp1d(risky_value, p_risky, bounds_error=False, fill_value=0)
+    p_risky = p_risky_(x_value)
 
-        # So far the distribution of values are calculated without any heed to risk dependence
-        # The next step assumes that the participant calculates the expected value by multiplying with prob.
-        risky_value = bin_centers*risk_prob
-        p_risky = ps/risk_prob
-
-        p_risky_ = interpolate.interp1d(risky_value, p_risky, bounds_error=False, fill_value=0)
-        p_risky = p_risky_(bin_centers)
-
-    return bin_centers, p_risky
+    return risky_value, p_risky
 
 # Calculate how often distribution 1 is larger than distribution 2
 def diff_dist(grid, p1, p2):

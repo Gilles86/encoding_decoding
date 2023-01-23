@@ -25,21 +25,15 @@ def sensory_noise(m, sd, grid):
     return ss.vonmises(loc=m*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(grid*np.pi*2)*np.pi*2.
 
 # Take input orientation and gives the decoded distribution
-def MI_efficient_encoding(theta0, sigma_stim, sigma_rep, normalize=True):
+def MI_efficient_encoding(theta0, sigma_stim, sigma_rep):
 
     theta0 = np.atleast_1d(theta0)
     # theta0 x theta_gen x m_gen
     # Add stimulus noise to get distribution of thetas given theta0 - theta0 x theta_gen
     p_theta_given_theta0 = stimulus_noise(theta0[:, np.newaxis], sd=sigma_stim, grid=stim_grid[np.newaxis, :])
-
-    if normalize:
-        p_theta_given_theta0 /= trapezoid(p_theta_given_theta0, axis=1)[:, np.newaxis]
-
     # Add sensory noise to see what ms you get given a theta 0 - theta0 x theta_gen_rep x m_gen
     p_m_given_theta0 = sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], sd=sigma_rep,
                                      grid=rep_grid[np.newaxis, np.newaxis, :])
-    if normalize:
-        p_m_given_theta0 /= trapezoid(p_m_given_theta0, axis=2)[:, :, np.newaxis]
 
     # Combine sensory and stimulus noise
     p_m_given_theta0 = p_m_given_theta0 * p_theta_given_theta0[..., np.newaxis]
@@ -53,18 +47,14 @@ def MI_efficient_encoding(theta0, sigma_stim, sigma_rep, normalize=True):
                       sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], sd=sigma_rep,
                                     grid=rep_grid[np.newaxis, np.newaxis, :])
 
-    if normalize:
-        p_m_given_theta /= trapezoid(p_m_given_theta, axis=1)[:, np.newaxis, :]
-        p_m_given_theta /= trapezoid(p_m_given_theta, axis=2)[:, :, np.newaxis]
-
     # Integrate out the realized thetas
     p_m_given_theta = trapezoid(p_m_given_theta, stim_grid, axis=1)
 
     return p_m_given_theta0, p_m_given_theta
 
 # Take input orientation and gives the decoded distribution
-def bayesian_decoding(theta0, sigma_stim, sigma_rep, normalize=True):
-    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, sigma_stim, sigma_rep, normalize=normalize)
+def bayesian_decoding(theta0, sigma_stim, sigma_rep):
+    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, sigma_stim, sigma_rep)
     # Multiply with prior on thetas
     p_theta_given_m = p_m_given_theta * prior(stim_grid)[:, np.newaxis]
 

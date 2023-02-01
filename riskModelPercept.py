@@ -5,10 +5,10 @@ from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 
 # We need 1500 grid points in stim_grid to see behavior properly for small noise regimes that we are interested in
-stim_grid = np.linspace(0, np.pi*2., 500, True)
+stim_grid = np.linspace(0, 180, 500, True) * np.pi / 90
 rep_grid = np.linspace(0, 1., 300, True)
 
-max_val = 81
+max_val = 12
 min_val = 1
 
 def prior(x):
@@ -18,23 +18,23 @@ def cdf(x):
     cdf = integrate.cumtrapz(prior(x), stim_grid, initial=0.0)
     return cdf
 
-def stimulus_noise(x, sd, grid):
-    return ss.vonmises(loc=x, kappa=1/sd**2).pdf(grid)
+def stimulus_noise(x, kappa_s, grid):
+    return ss.vonmises(loc=x, kappa=kappa_s).pdf(grid)
 
-def sensory_noise(m, sd, grid):
-    return ss.vonmises(loc=m*np.pi*2., kappa=1./(sd*np.pi*2.)**2).pdf(grid*np.pi*2)*np.pi*2.
+def sensory_noise(m, kappa_r, grid):
+    return ss.vonmises(loc=m*np.pi*2., kappa=kappa_r).pdf(grid*np.pi*2)*np.pi*2.
 
 # Take input orientation and gives the decoded distribution
-def MI_efficient_encoding(theta0, sigma_stim, sigma_rep, normalize = True):
+def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = True):
 
     theta0 = np.atleast_1d(theta0)
     # theta0 x theta_gen x m_gen
     # Add stimulus noise to get distribution of thetas given theta0 - theta0 x theta_gen
-    p_theta_given_theta0 = stimulus_noise(theta0[:, np.newaxis], sd=sigma_stim, grid=stim_grid[np.newaxis, :])
+    p_theta_given_theta0 = stimulus_noise(theta0[:, np.newaxis], kappa_s=kappa_s, grid=stim_grid[np.newaxis, :])
     if normalize:
         p_theta_given_theta0 /= trapezoid(p_theta_given_theta0, stim_grid, axis=1)[:, np.newaxis]
     # Add sensory noise to see what ms you get given a theta 0 - theta0 x theta_gen_rep x m_gen
-    p_m_given_theta0 = sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], sd=sigma_rep,
+    p_m_given_theta0 = sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], kappa_r=kappa_r,
                                      grid=rep_grid[np.newaxis, np.newaxis, :])
     if normalize:
         p_m_given_theta0 /= trapezoid(p_m_given_theta0, rep_grid, axis=2)[:, :, np.newaxis]
@@ -46,23 +46,23 @@ def MI_efficient_encoding(theta0, sigma_stim, sigma_rep, normalize = True):
     p_m_given_theta0 = trapezoid(p_m_given_theta0, stim_grid, axis=1)
 
     # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
-    p_m_given_theta = stimulus_noise(stim_grid[:, np.newaxis], sd=sigma_stim, grid=stim_grid[np.newaxis, :])[
+    p_m_given_theta = stimulus_noise(stim_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_grid[np.newaxis, :])[
                           ..., np.newaxis] * \
-                      sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], sd=sigma_rep,
+                      sensory_noise(cdf(stim_grid)[np.newaxis, :, np.newaxis], kappa_r=kappa_r,
                                     grid=rep_grid[np.newaxis, np.newaxis, :])
-
-    # if normalize:
-        # p_m_given_theta /= trapezoid(p_m_given_theta, stim_grid, axis=1)[:, np.newaxis, :]
-        # p_m_given_theta /= trapezoid(p_m_given_theta, rep_grid, axis=2)[:, :, np.newaxis]
 
     # Integrate out the realized thetas
     p_m_given_theta = trapezoid(p_m_given_theta, stim_grid, axis=1)
 
+    if normalize:
+        # p_m_given_theta /= trapezoid(p_m_given_theta, stim_grid, axis=1)[:, np.newaxis, :]
+        p_m_given_theta /= trapezoid(p_m_given_theta, rep_grid, axis=1)[:, np.newaxis]
+
     return p_m_given_theta0, p_m_given_theta
 
 # Take input orientation and gives the decoded distribution
-def bayesian_decoding(theta0, sigma_stim, sigma_rep, normalize = True):
-    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, sigma_stim, sigma_rep, normalize=normalize)
+def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = True):
+    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
     # Multiply with prior on thetas
     p_theta_given_m = p_m_given_theta * prior(stim_grid)[:, np.newaxis]
 
@@ -83,9 +83,9 @@ def bayesian_decoding(theta0, sigma_stim, sigma_rep, normalize = True):
 
 
 # Takes in orientation and gives mean decoded orientation
-def expected_thetahat_theta0(theta0, sigma_stim, sigma_rep):
-    p_thetaest_given_theta0 = bayesian_decoding(theta0, sigma_stim, sigma_rep)
-    #p_thetaest_given_theta0 = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
+def expected_thetahat_theta0(theta0, kappa_s, kappa_r):
+    p_thetaest_given_theta0 = bayesian_decoding(theta0, kappa_s, kappa_r)
+    #p_thetaest_given_theta0 = get_thetahat_dist(theta0, kappa_s, kappa_r)
 
     return np.angle(trapezoid(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_grid, axis=1)) % (2*np.pi)
 
@@ -111,13 +111,13 @@ def value_function_ori(x, type):
     return value_function
 
 
-def safe_value_dist(theta0, sigma_stim, sigma_rep, type, interpolation_kind='linear', bins=100, slow=True):
+def safe_value_dist(theta0, kappa_s, kappa_r, type, interpolation_kind='linear', bins=100, slow=True):
 
 
     # bins = np.linspace(1, max_val, n_bins)
     x_stim = np.array(stim_grid)
-    p_stim = bayesian_decoding(theta0, sigma_stim, sigma_rep)
-    # p_stim = get_thetahat_dist(theta0, sigma_stim, sigma_rep)
+    p_stim = bayesian_decoding(theta0, kappa_s, kappa_r)
+    # p_stim = get_thetahat_dist(theta0, kappa_s, kappa_r)
 
     assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
 
@@ -148,9 +148,9 @@ def safe_value_dist(theta0, sigma_stim, sigma_rep, type, interpolation_kind='lin
 
     return edges, ps
 
-def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=100, slow=True):
+def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, interpolation_kind='linear', bins=100, slow=True):
 
-    x_value, p_value = safe_value_dist(theta1, sigma_stim, sigma_rep, type, interpolation_kind, bins, slow)
+    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type, interpolation_kind, bins, slow)
 
     risky_value = x_value*risk_prob
     p_risky = p_value/risk_prob

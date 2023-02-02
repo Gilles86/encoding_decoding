@@ -6,7 +6,7 @@ from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
 
 # We need 1500 grid points in stim_grid to see behavior properly for small noise regimes that we are interested in
 stim_grid = np.linspace(0, 180, 500, True) * np.pi / 90
-rep_grid = np.linspace(0, 1., 300, True)
+rep_grid = np.linspace(0, 180, 300, True) * np.pi / 90  # np.linspace(0, 1., 300, True)
 
 max_val = 12
 min_val = 1
@@ -15,14 +15,14 @@ def prior(x):
     return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
 
 def cdf(x):
-    cdf = integrate.cumtrapz(prior(x), stim_grid, initial=0.0)
+    cdf = integrate.cumtrapz(prior(x), stim_grid, initial=0.0)*np.pi*2.
     return cdf
 
 def stimulus_noise(x, kappa_s, grid):
     return ss.vonmises(loc=x, kappa=kappa_s).pdf(grid)
 
 def sensory_noise(m, kappa_r, grid):
-    return ss.vonmises(loc=m*np.pi*2., kappa=kappa_r).pdf(grid*np.pi*2)*np.pi*2.
+    return ss.vonmises(loc=m, kappa=kappa_r).pdf(grid)
 
 # Take input orientation and gives the decoded distribution
 def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = True):

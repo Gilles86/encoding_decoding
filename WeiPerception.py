@@ -2,9 +2,7 @@ import numpy as np
 import math
 
 x = np.linspace(0, 180, 91) * np.pi / 90
-m = np.linspace(0, 180, 91) * np.pi / 90
 x = x[:90]
-m = m[:90]
 prior = np.ones(len(x))
 accu = np.zeros(len(x))
 base = 2
@@ -31,7 +29,8 @@ for i in range(len(accu)):
 
 m = accu
 
-def bias(kappa, kappa_s):
+
+def p_m_given_theta(kappa, kappa_s):
     temp = np.zeros(len(x))
     von = np.zeros(len(x))
     con = np.zeros((len(x), len(m)))
@@ -46,7 +45,10 @@ def bias(kappa, kappa_s):
 
     con = con / np.sum(con)
 
-    posterior = np.zeros(len(x))
+    return con
+
+def mean_theta_given_m(kappa, kappa_s):
+    con = p_m_given_theta(kappa, kappa_s)
     bayes_mean = np.zeros(len(m))
 
     for j in range(len(m)):
@@ -55,9 +57,15 @@ def bias(kappa, kappa_s):
         bayes_mean[j] = np.arctan2(np.sum(np.sin(x) * posterior), np.sum(np.cos(x) * posterior))
         bayes_mean[j] = bayes_mean[j] - np.floor(bayes_mean[j] / (2 * np.pi)) * 2 * np.pi
 
-    bias_mean = np.zeros(len(m))
+    return bayes_mean
 
-    tem = np.zeros(len(x))
+def bias(kappa, kappa_s):
+    con = p_m_given_theta(kappa, kappa_s)
+
+    bayes_mean = mean_theta_given_m(kappa, kappa_s)
+
+    bias_mean = np.zeros(len(x))
+
     for i in range(len(x)):
         tem = con[i, :] / np.sum(con[i, :])
         weight = tem * prior

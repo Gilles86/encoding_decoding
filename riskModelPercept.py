@@ -2,17 +2,14 @@ import numpy as np
 import scipy.stats as ss
 from scipy import interpolate
 from scipy import integrate
-from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
+from scipy.integrate import simpson, trapezoid, cumulative_trapezoid, fixed_quad
 
-# We need 1500 grid points in stim_grid to see behavior properly for small noise regimes
-# that we are interested in
-# stim_grid = np.linspace(0, 180, 500, True) * np.pi / 90
-# rep_grid = np.linspace(0, 180, 300, True) * np.pi / 90  # np.linspace(0, 1., 300, True)
-
+# Note that if the end points are included, then use methods like trapezoid or simpson and not np.sum,
+# but if end points are not included, then use np.sum (any binning method)
 stim_grid = np.linspace(0, 180, 501) * np.pi / 90
 rep_grid = np.linspace(0, 180, 301) * np.pi / 90  # np.linspace(0, 1., 300, True)
-stim_grid = stim_grid[:-1]
-rep_grid = rep_grid[:-1]
+# stim_grid = stim_grid[:-1]
+# rep_grid = rep_grid[:-1]
 
 max_val = 12
 min_val = 1
@@ -53,6 +50,7 @@ def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
 
     # Integrate out different thetas, so we just have ms given theta0
     p_m_given_theta0 = trapezoid(p_m_given_theta0, stim_grid, axis=1)
+    # p_m_given_theta0 = np.sum(p_m_given_theta0, axis=1)
 
     # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
     p_m_given_theta = stimulus_noise(stim_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_grid[np.newaxis, :])[
@@ -61,7 +59,8 @@ def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
                                     grid=rep_grid[np.newaxis, np.newaxis, :])
 
     # Integrate out the realized thetas
-    p_m_given_theta = np.sum(p_m_given_theta, axis=1)
+    p_m_given_theta = trapezoid(p_m_given_theta, stim_grid, axis=1)
+    # p_m_given_theta = np.sum(p_m_given_theta, axis=1)
 
     if normalize:
         # p_m_given_theta /= trapezoid(p_m_given_theta, stim_grid, axis=1)[:, np.newaxis, :]
@@ -76,17 +75,24 @@ def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
     p_theta_given_m = p_m_given_theta * prior(stim_grid)[:, np.newaxis]
 
     # Normalize with p(m) to get posterior
+    # if normalize:
     p_theta_given_m = p_theta_given_m / trapezoid(p_theta_given_m, stim_grid, axis=0)[np.newaxis, :]
+    # p_theta_given_m = p_theta_given_m / np.sum(p_theta_given_m, axis=0)[np.newaxis, :]
 
     # theta0 x theta_tilde x m
     # Probability of estimating \hat{theta} given theta0
     p_thetaest_given_theta0 = p_m_given_theta0[:, np.newaxis, :] * p_theta_given_m[np.newaxis, ...]
 
     # Get rid of m
+
+    # p_thetaest_given_theta0[2] = circularize(p_thetaest_given_theta0[2], rep_grid)
+    # p_thetaest_given_theta0 = simpson(p_thetaest_given_theta0, rep_grid, axis=2)
+    # p_thetaest_given_theta0 = np.sum(p_thetaest_given_theta0, axis=2)
     p_thetaest_given_theta0 = trapezoid(p_thetaest_given_theta0, rep_grid, axis=2)
 
     # normalize (99% sure that not necessary)
-    p_thetaest_given_theta0 /= trapezoid(p_thetaest_given_theta0, stim_grid, axis=1)[:, np.newaxis]
+    if normalize:
+        p_thetaest_given_theta0 /= trapezoid(p_thetaest_given_theta0, stim_grid, axis=1)[:, np.newaxis]
 
     return p_thetaest_given_theta0
 
@@ -94,10 +100,8 @@ def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
 # Takes in orientation and gives mean decoded orientation
 def expected_thetahat_theta0(theta0, kappa_s, kappa_r, normalize = False):
     p_thetaest_given_theta0 = bayesian_decoding(theta0, kappa_s, kappa_r, normalize)
-    #p_thetaest_given_theta0 = get_thetahat_dist(theta0, kappa_s, kappa_r)
-    # ex = np.arctan2(np.sum(np.sin(stim_grid) * p_thetaest_given_theta0), np.sum(np.cos(stim_grid) *p_thetaest_given_theta0))
-    # ex = ex - np.floor(ex / (2 * np.pi)) * 2 * np.pi
     return np.angle(trapezoid(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_grid, axis=1)) % (2*np.pi)
+    # return np.angle(np.sum(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, axis=1)) % (2*np.pi)
 
 
 # NOW WEI AND STOCKER code
@@ -111,9 +115,10 @@ def wei_theta_m_subject(theta0, kappa_s, kappa_r, normalize = True):
     bayes_mean = np.zeros(len(rep_grid))
 
     for j in range(len(rep_grid)):
-        posterior = p_m_given_theta[:, j] * prior(stim_grid)
+        posterior = p_theta_given_m[:, j]
 
-        bayes_mean[j] = np.arctan2(np.sum(np.sin(stim_grid) * posterior), np.sum(np.cos(stim_grid) * posterior))
+        bayes_mean[j] = np.arctan2(trapezoid(np.sin(stim_grid) * posterior, stim_grid), trapezoid(np.cos(stim_grid) * posterior, stim_grid))
+        # bayes_mean[j] = np.arctan2(np.sum(np.sin(stim_grid) * posterior), np.sum(np.cos(stim_grid) * posterior))
         bayes_mean[j] = bayes_mean[j] - np.floor(bayes_mean[j] / (2 * np.pi)) * 2 * np.pi
 
     return bayes_mean
@@ -127,7 +132,8 @@ def wei_bias(theta0, kappa_s, kappa_r, normalize = True):
     for i in range(len(stim_grid)):
         tem = p_m_given_theta[i, :] / np.sum(p_m_given_theta[i, :])
         weight = tem #* prior(rep_grid)
-        bias_mean[i] = np.arctan2(np.sum(np.sin(bayes_mean) * weight), np.sum(np.cos(bayes_mean) * weight))
+        bias_mean[i] = np.arctan2(trapezoid(np.sin(bayes_mean) * weight, rep_grid), trapezoid(np.cos(bayes_mean) * weight, rep_grid))
+        # bias_mean[i] = np.arctan2(np.sum(np.sin(bayes_mean) * weight), np.sum(np.cos(bayes_mean) * weight))
         bias_mean[i] = bias_mean[i] - np.floor(bias_mean[i] / (2 * np.pi)) * 2 * np.pi
         bias_mean[i] = bias_mean[i] - stim_grid[i]
 
@@ -136,33 +142,31 @@ def wei_bias(theta0, kappa_s, kappa_r, normalize = True):
 
 def value_function_ori(x, type):
     if type == "prior":
-        value_function = (max_val-(max_val-min_val)*np.abs(np.sin(2*x)))
+        value_function = (max_val-(max_val-min_val)*np.abs(np.sin(x)))
 
     if type == "linearPrior":
-        value_function = min_val+abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-x*(max_val - min_val)*4/np.pi)))))))
+        value_function = max_val - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - x * (max_val - min_val)*2 / np.pi))))
 
     if type == "curvedPrior":
-        value_function = min_val+abs((max_val-min_val)*np.cos(2*x))
+        value_function = min_val+abs((max_val-min_val)*np.cos(x))
 
     if type == "inversePrior":
-        value_function = min_val + abs((max_val-min_val) * np.sin(2 * x))
+        value_function = min_val + abs((max_val-min_val) * np.sin(x))
 
     if type == "inverseLinearPrior":
-        value_function = max_val - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - x * (max_val - min_val)*4 / np.pi)))))))
+        value_function = min_val+abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-x*(max_val - min_val)*2/np.pi))))
 
     if type == "inverseCurvedPrior":
-        value_function = max_val - abs((max_val-min_val) * np.cos(2 * x))
+        value_function = max_val - abs((max_val-min_val) * np.cos(x))
 
     return value_function
 
 
 def safe_value_dist(theta0, kappa_s, kappa_r, type, interpolation_kind='linear', bins=100, slow=True):
 
-
     # bins = np.linspace(1, max_val, n_bins)
     x_stim = np.array(stim_grid)
     p_stim = bayesian_decoding(theta0, kappa_s, kappa_r)
-    # p_stim = get_thetahat_dist(theta0, kappa_s, kappa_r)
 
     assert (x_stim.ndim == 1), "x_stim should have only one dimension (same grid for all p_stims)"
 

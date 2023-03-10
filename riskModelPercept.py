@@ -3,6 +3,8 @@ import scipy.stats as ss
 from scipy import interpolate
 from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid, fixed_quad
+import scipy.stats as ss
+from scipy.optimize import minimize
 
 # Note that if the end points are included, then use methods like trapezoid or simpson and not np.sum,
 # but if end points are not included, then use np.sum (any binning method)
@@ -224,3 +226,29 @@ def diff_dist(grid, p1, p2):
 
     # Cummulative probability
     return integrate.trapz(p, grid)
+
+
+def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
+
+    def get_probit(x, intercept, slope):
+        return ss.norm(0.0, 1.0).cdf(intercept + slope*x)
+
+    def cost(xs, ps, intercept, slope):
+        return np.sum((get_probit(xs, intercept, slope) - ps)**2)
+    
+    y = p_chose_risky.ravel()
+    x = risky_payoffs.ravel()
+
+    def cost_(pars, *args):
+        intercept, slope = pars
+        return cost(x, y, intercept, slope)
+
+    result = minimize(cost_, (-safe_payoff/risk_prob, 1.0), method='L-BFGS-B')
+
+    intercept_est, slope_est = result.x
+
+    indifference_point = -intercept_est/slope_est
+
+    rnp = safe_payoff / indifference_point
+
+    return rnp

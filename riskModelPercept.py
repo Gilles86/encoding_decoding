@@ -230,14 +230,15 @@ def diff_dist(grid, p1, p2):
 
 def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
 
+    y = p_chose_risky.ravel()
+    x = risky_payoffs.ravel()
+
+
     def get_probit(x, intercept, slope):
         return ss.norm(0.0, 1.0).cdf(intercept + slope*x)
 
     def cost(xs, ps, intercept, slope):
         return np.sum((get_probit(xs, intercept, slope) - ps)**2)
-    
-    y = p_chose_risky.ravel()
-    x = risky_payoffs.ravel()
 
     def cost_(pars, *args):
         intercept, slope = pars

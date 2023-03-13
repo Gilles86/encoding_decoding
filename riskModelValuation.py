@@ -3,6 +3,7 @@ import scipy.stats as ss
 from scipy import interpolate
 from scipy import integrate
 from scipy.integrate import simpson, trapezoid, cumulative_trapezoid
+from scipy.optimize import minimize
 # from scipy.stats import gaussian_kde
 
 
@@ -95,6 +96,7 @@ def prior_val(grid, type, interpolation_kind='linear', bins=25, slow=True):
     p_ori = prior_ori(grid)
 
     bin_centers, ps = ori_to_val_dist(grid, p_ori, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
+    ps = np.squeeze(ps) # Brings it back to 1 dime
 
     return bin_centers, ps
 
@@ -115,11 +117,11 @@ def stimulus_val_noise(x, kappa_s, grid, type, interpolation_kind='linear', bins
         x = np.array(x)
     x = x[:, np.newaxis]
 
-    p_noise_ori = ss.vonmises(loc=x, kappa=kappa_s).pdf(grid)
+    p_noise_ori = ss.vonmises(loc=x, kappa=kappa_s).pdf(grid[np.newaxis, :])
 
     bin_centers, ps = ori_to_val_dist(grid, p_noise_ori, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
 
-    return ps
+    return ps 
 
 
 # This noise will be added to the representation space of the variable being encoded.
@@ -127,12 +129,12 @@ def stimulus_val_noise(x, kappa_s, grid, type, interpolation_kind='linear', bins
 # It should not be a vonmises anymore. In fact what it should be depends on the specific type of experimental setup we
 # design in my opinion. If participants are always just showed one quadrant, makes more sense that it is a truncated
 # normal in my opinion. hOWEVER, IF IT IS 2 QUADRANTS, SHOULD be a recursive value that repeats back in opposite direction.
-def sensory_noise(m, sd, grid, type):
-    truncBoth = ss.truncnorm.pdf(grid,(0.0 - m) / sd, (1.0 -m) / sd, m, sd)
-    truncUp = ss.truncnorm.pdf(grid, (-np.Inf - m) / sd, (1. - m) / sd, m, sd)
-    truncLow = ss.truncnorm.pdf(grid, (0.0 - m) / sd, (np.Inf - m) / sd, m, sd)
-    foldUp = ss.foldnorm.pdf(1-grid, (1-m)/sd, 0.0, sd) # 0.0 here is essentially the point of the folding
-    foldLow = ss.foldnorm.pdf(grid, m/sd, 0.0, sd)
+def sensory_noise(m, sigma_rep, grid, type):
+    truncBoth = ss.truncnorm.pdf(grid,(0.0 - m) / sigma_rep, (1.0 -m) / sigma_rep, m, sigma_rep)
+    truncUp = ss.truncnorm.pdf(grid, (-np.Inf - m) / sigma_rep, (1. - m) / sigma_rep, m, sigma_rep)
+    truncLow = ss.truncnorm.pdf(grid, (0.0 - m) / sigma_rep, (np.Inf - m) / sigma_rep, m, sigma_rep)
+    foldUp = ss.foldnorm.pdf(1-grid, (1-m)/sigma_rep, 0.0, sigma_rep) # 0.0 here is essentially the point of the folding
+    foldLow = ss.foldnorm.pdf(grid, m/sigma_rep, 0.0, sigma_rep)
     if experimentRange == "0to45" or "45to90" or "90to135" or "135to180":
         # This one is when experiment is shown only within a 45degree angle. The distribution after truncation
         # gets redistributed elsewhere 
@@ -149,17 +151,17 @@ def sensory_noise(m, sd, grid, type):
     if experimentRange == "noBoundaryEffects":
         # We assume that they represent the information here totally and the bounds do not mean truncation but rather,
         # they jusst shift the boundary values to include 5 standard deviations from the noise, whatever the noise is
-        return ss.norm.pdf(grid, m+5*sd*(0.5-m), sd)
+        return ss.norm.pdf(grid, m+5*sigma_rep*(0.5-m), sigma_rep)
 
 # Takes in the orientation grid and gives out the cdf over values
-def cdf_val(grid, type):
-    bin_centers, ps = prior_val(grid, type)
+def cdf_val(grid, type, bins = 25):
+    bin_centers, ps = prior_val(grid, type, bins = bins)
     cdf_val = np.squeeze(integrate.cumtrapz(ps, bin_centers, initial=0.0))
     return cdf_val
 
 
 # Take input orientation and gives the decoded distribution
-def value_efficient_encoding(theta0, sigma_stim, sigma_rep, type, interpolation_kind='linear', bins = 25, slow=True):
+def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, interpolation_kind='linear', bins = 25, slow=True):
     # Note that the sigma_stim is in ori space
 
     theta0 = np.atleast_1d(theta0)
@@ -168,20 +170,20 @@ def value_efficient_encoding(theta0, sigma_stim, sigma_rep, type, interpolation_
 
     # val0 (has same dim as theta0) x theta_gen x m_gen
     # Add stimulus noise to get distribution of values given theta0 - val0 x value_gen
-    p_val_given_theta0 = stimulus_val_noise(theta0, sigma_stim, stim_grid, type)
+    p_val_given_theta0 = stimulus_val_noise(theta0, kappa_s, stim_grid, type, bins=bins)
     # Add sensory noise to see what ms for value you get given a value 0 - value_gen_rep x m_gen(rep)
     # For each point in rep space given by the cdf of the value function grid, we add sensory noise constant
-    p_m_given_val0 = sensory_noise(cdf_val(theta0, type)[np.newaxis, :, np.newaxis], sigma_rep, rep_grid[np.newaxis, np.newaxis, :], type)
+    p_m_given_val = sensory_noise(cdf_val(stim_grid, type, bins = bins)[np.newaxis, :, np.newaxis], sigma_rep, rep_grid[np.newaxis, np.newaxis, :], type)
 
     # Combine sensory and stimulus noise
-    p_m_given_val0 = p_m_given_val0 * p_val_given_theta0[..., np.newaxis]
+    p_m_given_val0 = p_m_given_val * p_val_given_theta0[..., np.newaxis]
 
-    # Integrate out different generated values (due to sstim noise), so we just have ms given theta0
+    # Integrate out different generated values (due to stim noise), so we just have ms given theta0
     p_m_given_val0 = trapezoid(p_m_given_val0, val_centers, axis=1)
 
     # Make a big array that for many thetas gives the probability of observing ms (value likelihood)
-    p_m_given_val = stimulus_val_noise(stim_grid, sigma_stim, stim_grid, type)[..., np.newaxis] * \
-        sensory_noise(cdf_val(stim_grid, type)[np.newaxis, :, np.newaxis], sigma_rep, rep_grid[np.newaxis, np.newaxis, :], type)
+    p_m_given_val = stimulus_val_noise(stim_grid, kappa_s, stim_grid, type, bins=bins)[..., np.newaxis] * \
+        sensory_noise(cdf_val(stim_grid, type, bins = bins)[np.newaxis, :, np.newaxis], sigma_rep, rep_grid[np.newaxis, np.newaxis, :], type)
 
     # Integrate out the realized values
     p_m_given_val = trapezoid(p_m_given_val, stim_grid, axis=0)
@@ -190,18 +192,18 @@ def value_efficient_encoding(theta0, sigma_stim, sigma_rep, type, interpolation_
     return p_m_given_val0, p_m_given_val
 
 # Take input orientation and gives the decoded distribution
-def value_bayesian_decoding(theta0, sigma_stim, sigma_rep, type, interpolation_kind='linear', bins=25, slow=True):
+def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, interpolation_kind='linear', bins=25, slow=True):
 
     # There is a one to one correspondence between theta0 and corresponding val0
     # val0 is implicitly presented val by presenting theta0.
 
-    p_m_given_val0, p_m_given_val = value_efficient_encoding(theta0, sigma_stim, sigma_rep, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
+    p_m_given_val0, p_m_given_val = value_efficient_encoding(theta0, kappa_s, sigma_rep, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
     # just changed this next line from the comebted one
-    # p_val_given_m = p_m_given_val*np.array(prior_val(stim_grid, type)[1])[:, np.newaxis]
-    p_val_given_m = p_m_given_val * prior_ori(stim_grid)[:, np.newaxis]
+    p_val_given_m = p_m_given_val*np.array(prior_val(stim_grid, type, bins = bins)[1])[:, np.newaxis]
+    # p_val_given_m = p_m_given_val * prior_ori(stim_grid)[:, np.newaxis]
 
     # Normalize with p(m)
-    p_val_given_m = p_val_given_m/ trapezoid(p_val_given_m, stim_grid, axis=0)[np.newaxis, :]
+    p_val_given_m = p_val_given_m / (trapezoid(p_val_given_m, prior_val(stim_grid, type, bins=bins)[0] , axis=0)[np.newaxis,:])
 
     # theta0 x theta_tilde x m
     # Probability of estimating \hat{theta} given theta0
@@ -212,14 +214,12 @@ def value_bayesian_decoding(theta0, sigma_stim, sigma_rep, type, interpolation_k
 
     # normalize (99% sure that not necessary)
     # p_thetaest_given_theta0 /= trapezoid(p_thetaest_given_theta0, stim_grid, axis=1)[:, np.newaxis]
-
-    # Right now I am doing a quick fix to get the answer. This code needs to be changed
-    val, p_value_est_given_val0 = ori_to_val_dist(stim_grid, p_value_est_given_val0, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
+    val = prior_val(stim_grid, type, bins=bins)[0]
     return val, p_value_est_given_val0
 
-def risky_value_dist(theta1, sigma_stim, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=25, slow=True):
+def risky_value_dist(theta1, kappa_s, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=25, slow=True):
 
-    bin_centers, ps = value_bayesian_decoding(theta1, sigma_stim, sigma_rep, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
+    bin_centers, ps = value_bayesian_decoding(theta1, kappa_s, sigma_rep, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
 
     risky_value = bin_centers*risk_prob
     p_risky = ps/risk_prob
@@ -236,7 +236,7 @@ def diff_dist(grid, p1, p2):
     # p1/p2: n_orienations x n(grid)
     # cdf at each point on grid for the second probability distribution array
     # Put safe_prob as p2
-    cdf2 = integrate.cumtrapz(p2, grid, initial=0.0, axis=0)
+    cdf2 = integrate.cumtrapz(p2, grid, initial=0.0, axis=1)
 
 
     # for every grid point, distribution 1 is bigger than distribution 2
@@ -247,3 +247,29 @@ def diff_dist(grid, p1, p2):
 
     # Cummulative probability
     return integrate.trapz(p, grid)
+
+
+def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
+
+    def get_probit(x, intercept, slope):
+        return ss.norm(0.0, 1.0).cdf(intercept + slope*x)
+
+    def cost(xs, ps, intercept, slope):
+        return np.sum((get_probit(xs, intercept, slope) - ps)**2)
+    
+    y = p_chose_risky.ravel()
+    x = risky_payoffs.ravel()
+
+    def cost_(pars, *args):
+        intercept, slope = pars
+        return cost(x, y, intercept, slope)
+
+    result = minimize(cost_, (-safe_payoff/risk_prob, 1.0), method='L-BFGS-B')
+
+    intercept_est, slope_est = result.x
+
+    indifference_point = -intercept_est/slope_est
+
+    rnp = safe_payoff / indifference_point
+
+    return rnp

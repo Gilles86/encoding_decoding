@@ -166,7 +166,6 @@ def value_function_ori(x, type):
 
 def safe_value_dist(theta0, kappa_s, kappa_r, type, interpolation_kind='linear', bins=100, slow=True):
 
-    # bins = np.linspace(1, max_val, n_bins)
     x_stim = np.array(stim_grid)
     p_stim = bayesian_decoding(theta0, kappa_s, kappa_r)
 
@@ -193,11 +192,11 @@ def safe_value_dist(theta0, kappa_s, kappa_r, type, interpolation_kind='linear',
         f = interpolate.interp1d(bin_centers, ps, axis=1,
                                  kind=interpolation_kind, fill_value='extrapolate')
 
-        ps = f(edges)
+        ps = f(bin_centers)
 
-        ps /= np.trapz(ps, edges, axis=1)[:, np.newaxis]
+        ps /= np.trapz(ps, bin_centers, axis=1)[:, np.newaxis]
 
-    return edges, ps
+    return bin_centers, ps
 
 def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, interpolation_kind='linear', bins=100, slow=True):
 
@@ -208,7 +207,7 @@ def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, interpolation_ki
     p_risky_ = interpolate.interp1d(risky_value, p_risky, bounds_error=False, fill_value=0)
     p_risky = p_risky_(x_value)
 
-    return risky_value, p_risky
+    return x_value, p_risky
 
 # Calculate how often distribution 1 is larger than distribution 2
 def diff_dist(grid, p1, p2):

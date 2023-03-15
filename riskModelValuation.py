@@ -23,11 +23,6 @@ def prior_ori(x):
     return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
 
 
-# Evaluates the number of global minimas in the prior_ori function.
-prior_ori_repititions = sum(np.r_[True, prior_ori(stim_grid)[1:] < prior_ori(stim_grid)[:-1]] & np.r_[
-    prior_ori(stim_grid)[:-1] < prior_ori(stim_grid)[1:], True])
-
-
 # Getting a value function given a grid of orientations (stim_grid for example). Always between 0 and 2pi.
 def value_function_ori(x, type):
     if type == "prior":
@@ -78,16 +73,13 @@ def ori_to_val_dist(grid, p, type, interpolation_kind='linear', bins=25, slow=Tr
         ps = np.array(ps)
         bin_centers = (edges[1:] + edges[:-1]) / 2
 
-        # return bin_centers, ps
-
         f = interpolate.interp1d(bin_centers, ps, axis=1,
                                  kind=interpolation_kind, fill_value='extrapolate')
 
-        ps = f(edges)
+        ps = f(bin_centers)
+        ps /= np.trapz(ps, bin_centers, axis=1)[:, np.newaxis]
 
-        ps /= np.trapz(ps, edges, axis=1)[:, np.newaxis]
-
-    return edges, ps
+    return bin_centers, ps
 
 
 # Getting a prior over values given a orientation grid and a type

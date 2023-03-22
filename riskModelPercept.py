@@ -6,21 +6,50 @@ from scipy.integrate import simpson, trapezoid, cumulative_trapezoid, fixed_quad
 import scipy.stats as ss
 from scipy.optimize import minimize
 
-# Note that if the end points are included, then use methods like trapezoid or simpson and not np.sum,
-# but if end points are not included, then use np.sum (any binning method)
-stim_grid = np.linspace(0, 180, 501) * np.pi / 90
-rep_grid = np.linspace(0, 180, 301) * np.pi / 90  # np.linspace(0, 1., 300, True)
+# this needs to be set based on how yopu do your experiment
+experimentRange = "00to180" #"00to45", "45to90", "90to135", "135to180", "00to90", "90to180", "00to180", "noBoundaryEffects" # For now we predict the sensory noise type to be shaped (trucated, folded whatever)
+
+if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "00to90":
+    end = int(experimentRange[-2:])
+    start = int(experimentRange[0:2])
+if experimentRange == "90to135" or experimentRange == "90to180":
+    end = int(experimentRange[-3:])
+    start = int(experimentRange[0:2])
+if experimentRange == "135to180":
+    end = int(experimentRange[-3:])
+    start = int(experimentRange[0:3])
+if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
+    end = 180
+    start = 0
+factor = (end-start)/90.*np.pi
+
+stim_grid = np.linspace(start, end, 501) * np.pi / 90
+rep_grid = np.linspace(start, end, 301) * np.pi / 90
 # stim_grid = stim_grid[:-1]
 # rep_grid = rep_grid[:-1]
 
-max_val = 12
-min_val = 1
+max_val = 42
+min_val = 2
+
 
 def prior(x):
-    return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
+    if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
+        return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
+    if experimentRange == "00to90" or experimentRange == "90to180":
+        return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 2.0
+    if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
+        return (2 - np.abs(np.sin(x))) / (np.pi - 1)
 
-def cdf(x, grid):
-    cdf = integrate.cumtrapz(prior(x), grid, initial=0.0)*np.pi*2.
+# def prior(x):
+#     if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
+#         return (40 - np.abs(38*np.sin(x))) / (-152 + 80*np.pi)
+#     if experimentRange == "00to90" or experimentRange == "90to180":
+#         return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 2.0
+#     if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
+#         return (2 - np.abs(np.sin(x))) / (np.pi - 1)
+
+def cdf(x, grid): # goes from 0 to 2pi
+    cdf = integrate.cumtrapz(prior(x), grid, initial=0.0)*factor
     return cdf
 
 def stimulus_noise(x, kappa_s, grid):
@@ -28,8 +57,13 @@ def stimulus_noise(x, kappa_s, grid):
     return ss.vonmises(loc=x, kappa=kappa_s).pdf(grid)
 
 def sensory_noise(m, kappa_r, grid):
-    # return np.exp(kappa_r * (np.cos(m - grid) - 1))
-    return ss.vonmises(loc=m, kappa=kappa_r).pdf(grid)
+    sigma_rep = np.sqrt(1/(2*np.pi*kappa_r))
+    if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
+        return ss.vonmises(loc=m, kappa=kappa_r).pdf(grid)
+    else:
+        truncBoth = ss.truncnorm.pdf(grid,(start*np.pi/90 - m) / sigma_rep, (end*np.pi/90-m) / sigma_rep, m, sigma_rep)
+        return truncBoth
+
 
 # Take input orientation and gives the decoded distribution
 def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
@@ -86,9 +120,6 @@ def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
     p_thetaest_given_theta0 = p_m_given_theta0[:, np.newaxis, :] * p_theta_given_m[np.newaxis, ...]
 
     # Get rid of m
-
-    # p_thetaest_given_theta0[2] = circularize(p_thetaest_given_theta0[2], rep_grid)
-    # p_thetaest_given_theta0 = simpson(p_thetaest_given_theta0, rep_grid, axis=2)
     # p_thetaest_given_theta0 = np.sum(p_thetaest_given_theta0, axis=2)
     p_thetaest_given_theta0 = trapezoid(p_thetaest_given_theta0, rep_grid, axis=2)
 
@@ -143,23 +174,34 @@ def wei_bias(theta0, kappa_s, kappa_r, normalize = True):
 
 
 def value_function_ori(x, type):
+    x = np.array(x)
     if type == "prior":
-        value_function = (max_val-(max_val-min_val)*np.abs(np.sin(x)))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi/2] = max_val - ((max_val-min_val)/4)*(np.sin(x[x <= np.pi/2]))
+        value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = (max_val - (max_val-min_val)/2) - ((max_val-min_val)/4)*( - np.sin(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
+        value_function[x > 3*np.pi/2] = min_val - ((max_val-min_val)/4)*(np.sin(x[x > 3*np.pi/2]))
 
     if type == "linearPrior":
-        value_function = max_val - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - x * (max_val - min_val)*2 / np.pi))))
+        value_function = max_val -abs((max_val-min_val)*x/2/np.pi)
 
     if type == "curvedPrior":
-        value_function = min_val+abs((max_val-min_val)*np.cos(x))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
+        value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 -((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
 
     if type == "inversePrior":
-        value_function = min_val + abs((max_val-min_val) * np.sin(x))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi/2] = min_val + ((max_val-min_val)/4)*(np.sin(x[x <= np.pi/2]))
+        value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
+        value_function[x > 3*np.pi/2] = ((max_val-min_val)/4)*(np.sin(x[x > 3*np.pi/2])) + max_val
 
     if type == "inverseLinearPrior":
-        value_function = min_val+abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-x*(max_val - min_val)*2/np.pi))))
+        value_function = min_val + abs((max_val-min_val)*x/2/np.pi)
 
     if type == "inverseCurvedPrior":
-        value_function = max_val - abs((max_val-min_val) * np.cos(x))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi] = min_val + ((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
+        value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 +((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
 
     return value_function
 
@@ -208,47 +250,3 @@ def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, interpolation_ki
     p_risky = p_risky_(x_value)
 
     return x_value, p_risky
-
-# Calculate how often distribution 1 is larger than distribution 2
-def diff_dist(grid, p1, p2):
-    p = []
-    # grid: 1d
-    # p1/p2: n_orienations x n(grid)
-    cdf2 = integrate.cumtrapz(p2, grid, initial=0.0, axis=1)
-
-
-    # for every grid point, distribution 1 is bigger than distribution 2
-    # with a probability of being that value times the probability that dist
-    # 2 is lower than that value
-    prob = p1*cdf2
-    p.append(prob)
-
-    # Cummulative probability
-    return integrate.trapz(p, grid)
-
-
-def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
-
-    y = p_chose_risky.ravel()
-    x = risky_payoffs.ravel()
-
-
-    def get_probit(x, intercept, slope):
-        return ss.norm(0.0, 1.0).cdf(intercept + slope*x)
-
-    def cost(xs, ps, intercept, slope):
-        return np.sum((get_probit(xs, intercept, slope) - ps)**2)
-
-    def cost_(pars, *args):
-        intercept, slope = pars
-        return cost(x, y, intercept, slope)
-
-    result = minimize(cost_, (-safe_payoff/risk_prob, 1.0), method='L-BFGS-B')
-
-    intercept_est, slope_est = result.x
-
-    indifference_point = -intercept_est/slope_est
-
-    rnp = safe_payoff / indifference_point
-
-    return rnp

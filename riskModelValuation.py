@@ -8,40 +8,69 @@ from scipy.optimize import minimize
 
 
 # experiment = "oneSideTruncated" # "noBoundaryEffects" #"bothSideTruncated" #oneSideTruncated, bothSideTruncated, bothSideFolded
-experimentRange = "0to90" #"0to45", "45to90", "90to135", "135to180", "0to90", "90to180", "0to180", "noBoundaryEffects" # For now we predict the sensory noise type to be shaped (trucated, folded whatever)
-#depedning on the angles in which experiment is presented.
+# this needs to be set based on how yopu do your experiment
+experimentRange = "00to180" #"00to45", "45to90", "90to135", "135to180", "00to90", "90to180", "00to180", "noBoundaryEffects" # For now we predict the sensory noise type to be shaped (trucated, folded whatever)
 
-stim_grid = np.linspace(0, 180, 501) * np.pi / 90
+if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "00to90":
+    end = int(experimentRange[-2:])
+    start = int(experimentRange[0:2])
+if experimentRange == "90to135" or experimentRange == "90to180":
+    end = int(experimentRange[-3:])
+    start = int(experimentRange[0:2])
+if experimentRange == "135to180":
+    end = int(experimentRange[-3:])
+    start = int(experimentRange[0:3])
+if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
+    end = 180
+    start = 0
+factor = (end-start)/90.*np.pi
+
+stim_grid = np.linspace(start, end, 501) * np.pi / 90
 rep_grid = np.linspace(0, 1, 301)  # value based representation in this code
 
-max_val = 12
-min_val = 1
-
+max_val = 42
+min_val = 2
 
 # Getting a prior over orientation given a grid (x)
 def prior_ori(x):
-    return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
+    if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
+        return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
+    if experimentRange == "00to90" or experimentRange == "90to180":
+        return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 2.0
+    if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
+        return (2 - np.abs(np.sin(x))) / (np.pi - 1)
 
 
 # Getting a value function given a grid of orientations (stim_grid for example). Always between 0 and 2pi.
 def value_function_ori(x, type):
+    x = np.array(x)
     if type == "prior":
-        value_function = (max_val-(max_val-min_val)*np.abs(np.sin(x)))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi/2] = max_val - ((max_val-min_val)/4)*(np.sin(x[x <= np.pi/2]))
+        value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = (max_val - (max_val-min_val)/2) - ((max_val-min_val)/4)*( - np.sin(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
+        value_function[x > 3*np.pi/2] = min_val - ((max_val-min_val)/4)*(np.sin(x[x > 3*np.pi/2]))
 
     if type == "linearPrior":
-        value_function = max_val - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - abs((max_val-min_val) - x * (max_val - min_val)*2 / np.pi))))
+        value_function = max_val -abs((max_val-min_val)*x/2/np.pi)
 
     if type == "curvedPrior":
-        value_function = min_val+abs((max_val-min_val)*np.cos(x))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
+        value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 -((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
 
     if type == "inversePrior":
-        value_function = min_val + abs((max_val-min_val) * np.sin(x))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi/2] = min_val + ((max_val-min_val)/4)*(np.sin(x[x <= np.pi/2]))
+        value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
+        value_function[x > 3*np.pi/2] = ((max_val-min_val)/4)*(np.sin(x[x > 3*np.pi/2])) + max_val
 
     if type == "inverseLinearPrior":
-        value_function = min_val+abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-abs((max_val-min_val)-x*(max_val - min_val)*2/np.pi))))
+        value_function = min_val + abs((max_val-min_val)*x/2/np.pi)
 
     if type == "inverseCurvedPrior":
-        value_function = max_val - abs((max_val-min_val) * np.cos(x))
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi] = min_val + ((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
+        value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 +((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
 
     return value_function
 
@@ -49,7 +78,7 @@ def value_function_ori(x, type):
 # A general numerical method is used here to find new distributions of functions of distributions we know.
 # Takes in the grid used in original distribution, and the distribution of the original distribution and then
 # finds the distribution of the functional value distribution.
-def ori_to_val_dist(grid, p, type, interpolation_kind='linear', bins=25, slow=True):
+def ori_to_val_dist(grid, p, type, interpolation_kind='linear', bins=100, slow=True):
     x_stim = np.array(grid)
     p_stim = p
 
@@ -83,7 +112,7 @@ def ori_to_val_dist(grid, p, type, interpolation_kind='linear', bins=25, slow=Tr
 
 
 # Getting a prior over values given a orientation grid and a type
-def prior_val(grid, type, interpolation_kind='linear', bins=25, slow=True):
+def prior_val(grid, type, interpolation_kind='linear', bins=100, slow=True):
 
     p_ori = prior_ori(grid)
 
@@ -100,7 +129,7 @@ def stimulus_ori_noise(x, kappa_s, grid):
 
 # Getting the noisy input stimulus distribution in value space mapping
 # Input parameters define noise in orientation space buy function gives out the noisy distribution in value space
-def stimulus_val_noise(x, kappa_s, grid, type, interpolation_kind='linear', bins=25, slow=True):
+def stimulus_val_noise(x, kappa_s, grid, type, interpolation_kind='linear', bins=100, slow=True):
     # grid = grid[np.newaxis, :]
     # grid = np.array(grid)
     if np.isscalar(x):
@@ -123,37 +152,30 @@ def stimulus_val_noise(x, kappa_s, grid, type, interpolation_kind='linear', bins
 # normal in my opinion. hOWEVER, IF IT IS 2 QUADRANTS, SHOULD be a recursive value that repeats back in opposite direction.
 def sensory_noise(m, sigma_rep, grid, type):
     truncBoth = ss.truncnorm.pdf(grid,(0.0 - m) / sigma_rep, (1.0 -m) / sigma_rep, m, sigma_rep)
-    truncUp = ss.truncnorm.pdf(grid, (-np.Inf - m) / sigma_rep, (1. - m) / sigma_rep, m, sigma_rep)
-    truncLow = ss.truncnorm.pdf(grid, (0.0 - m) / sigma_rep, (np.Inf - m) / sigma_rep, m, sigma_rep)
-    foldUp = ss.foldnorm.pdf(1-grid, (1-m)/sigma_rep, 0.0, sigma_rep) # 0.0 here is essentially the point of the folding
-    foldLow = ss.foldnorm.pdf(grid, m/sigma_rep, 0.0, sigma_rep)
-    if experimentRange == "0to45" or "45to90" or "90to135" or "135to180":
-        # This one is when experiment is shown only within a 45degree angle. The distribution after truncation
-        # gets redistributed elsewhere 
-        return truncBoth
-    if experimentRange == "0to90" or "90to180":
-        if type == "linearPrior" or type == "prior" or type =="curvedPrior":
-            return (1-m)*foldLow + m*truncUp # The lowed values get folded while upper ones are truncated
-        if type == "inverseLinearPrior" or type == "inversePrior" or type =="inverseCurvedPrior":
-            return m*foldUp + (1-m)*truncLow # The lowed values get truncated while upper ones are folded
-    if experimentRange == "0to180":
-        # This one is when experiment is shown only within a 45degree angle. The distribution after truncation
-        # gets redistributed elsewhere 
-        return m*foldUp+(1-m)*foldLow
-    if experimentRange == "noBoundaryEffects":
+    # truncUp = ss.truncnorm.pdf(grid, (-np.Inf - m) / sigma_rep, (1. - m) / sigma_rep, m, sigma_rep)
+    # truncLow = ss.truncnorm.pdf(grid, (0.0 - m) / sigma_rep, (np.Inf - m) / sigma_rep, m, sigma_rep)
+    # foldUp = ss.foldnorm.pdf(1-grid, (1-m)/sigma_rep, 0.0, sigma_rep) # 0.0 here is essentially the point of the folding
+    # foldLow = ss.foldnorm.pdf(grid, m/sigma_rep, 0.0, sigma_rep)
+    # if experimentRange == "00to90" or "90to180":
+    #     if type == "linearPrior" or type == "prior" or type =="curvedPrior":
+    #         return (1-m)*foldLow + m*truncUp # The lowed values get folded while upper ones are truncated
+    #     if type == "inverseLinearPrior" or type == "inversePrior" or type =="inverseCurvedPrior":
+    #         return m*foldUp + (1-m)*truncLow # The lowed values get truncated while upper ones are folded
+    # if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
         # We assume that they represent the information here totally and the bounds do not mean truncation but rather,
         # they jusst shift the boundary values to include 5 standard deviations from the noise, whatever the noise is
-        return ss.norm.pdf(grid, m+5*sigma_rep*(0.5-m), sigma_rep)
+        # return ss.norm.pdf(grid, m+5*sigma_rep*(0.5-m), sigma_rep)
+    return truncBoth
 
 # Takes in the orientation grid and gives out the cdf over values
-def cdf_val(grid, type, bins = 25):
+def cdf_val(grid, type, bins =100):
     bin_centers, ps = prior_val(grid, type, bins = bins)
     cdf_val = np.squeeze(integrate.cumtrapz(ps, bin_centers, initial=0.0))
     return cdf_val
 
 
 # Take input orientation and gives the decoded distribution
-def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, interpolation_kind='linear', bins = 25, slow=True):
+def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, interpolation_kind='linear', bins = 100, slow=True):
     # Note that the sigma_stim is in ori space
 
     theta0 = np.atleast_1d(theta0)
@@ -184,7 +206,7 @@ def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, interpolation_kin
     return p_m_given_val0, p_m_given_val
 
 # Take input orientation and gives the decoded distribution
-def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, interpolation_kind='linear', bins=25, slow=True):
+def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, interpolation_kind='linear', bins=100, slow=True):
 
     # There is a one to one correspondence between theta0 and corresponding val0
     # val0 is implicitly presented val by presenting theta0.
@@ -209,7 +231,7 @@ def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, interpolation_kind
     val = prior_val(stim_grid, type, bins=bins)[0]
     return val, p_value_est_given_val0
 
-def risky_value_dist(theta1, kappa_s, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=25, slow=True):
+def risky_value_dist(theta1, kappa_s, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=100, slow=True):
 
     bin_centers, ps = value_bayesian_decoding(theta1, kappa_s, sigma_rep, type, interpolation_kind=interpolation_kind, bins=bins, slow=slow)
 
@@ -220,48 +242,3 @@ def risky_value_dist(theta1, kappa_s, sigma_rep, risk_prob, type, interpolation_
     p_risky = p_risky_(bin_centers)
 
     return bin_centers, p_risky
-
-# Calculate how often distribution 1 is larger than distribution 2
-def diff_dist(grid, p1, p2):
-    p = []
-    # grid: 1d
-    # p1/p2: n_orienations x n(grid)
-    # cdf at each point on grid for the second probability distribution array
-    # Put safe_prob as p2
-    cdf2 = integrate.cumtrapz(p2, grid, initial=0.0, axis=1)
-
-
-    # for every grid point, distribution 1 is bigger than distribution 2
-    # with a probability of being that value times the probability that dist
-    # 2 is lower than that value
-    prob = p1*cdf2
-    p.append(prob)
-
-    # Cummulative probability
-    return integrate.trapz(p, grid)
-
-
-def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
-
-    def get_probit(x, intercept, slope):
-        return ss.norm(0.0, 1.0).cdf(intercept + slope*x)
-
-    def cost(xs, ps, intercept, slope):
-        return np.sum((get_probit(xs, intercept, slope) - ps)**2)
-    
-    y = p_chose_risky.ravel()
-    x = risky_payoffs.ravel()
-
-    def cost_(pars, *args):
-        intercept, slope = pars
-        return cost(x, y, intercept, slope)
-
-    result = minimize(cost_, (-safe_payoff/risk_prob, 1.0), method='L-BFGS-B')
-
-    intercept_est, slope_est = result.x
-
-    indifference_point = -intercept_est/slope_est
-
-    rnp = safe_payoff / indifference_point
-
-    return rnp

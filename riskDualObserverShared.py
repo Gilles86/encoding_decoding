@@ -12,7 +12,6 @@ import tools as tools
 # experiment = "oneSideTruncated" # "noBoundaryEffects" #"bothSideTruncated" #oneSideTruncated, bothSideTruncated, bothSideFolded
 # this needs to be set based on how yopu do your experiment
 experimentRange = tools.experimentRange #"00to45", "45to90", "90to135", "135to180", "00to90", "90to180", "00to180", "noBoundaryEffects" # For now we predict the sensory noise type to be shaped (trucated, folded whatever)
-
 start = tools.start
 end = tools.end
 

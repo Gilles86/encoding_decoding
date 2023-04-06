@@ -201,6 +201,9 @@ def grad_value_ori(x, type, line_frac = 0.0):
         if type == "cdf_prior":
             grad_val = prior_ori(x)*factor_val
 
+        if type == "increase_cdf_prior":
+            grad_val = prior_ori(x)*factor_val/2./np.sqrt(integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.00001))
+
         if type == "prior":
             grad_val = np.zeros_like(x)
             grad_val[x <= np.pi/2] = ((max_val-min_val)/4)*(np.cos((x)[x <= np.pi/2]))
@@ -230,6 +233,10 @@ def grad_value_ori(x, type, line_frac = 0.0):
             grad_val[(x > np.pi) & (x <= np.pi*2)] = ((max_val-min_val)/4)*(-np.sin(x[(x > np.pi) & (x <= np.pi*2)]))
 
     if experimentRange == "45to225":
+
+        if type == "cdf_prior":
+            grad_val = prior_ori(x-displace)*factor_val
+
         if type == "prior":
             grad_val = np.zeros_like(x)
             grad_val[x <= np.pi+displace] = ((max_val-min_val)/4)*(1+np.sin((x-displace)[x <= np.pi+displace]))
@@ -262,3 +269,4 @@ def grad_value_ori(x, type, line_frac = 0.0):
     grad_val = grad_val + line_frac/np.pi/2.*factor_val
 
     return grad_val
+

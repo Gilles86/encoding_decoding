@@ -30,7 +30,7 @@ def stimulus_ori_noise(x, kappa_s, grid):
     return ss.vonmises(loc=x, kappa=kappa_s).pdf(grid)
 
 def sensory_ori_noise(m, kappa_r, grid):
-    sigma_rep = np.sqrt(1/(2*np.pi*kappa_r))
+    sigma_rep = np.sqrt(tools.factor_val/kappa_r)
     if experimentRange == "00to180" or experimentRange == "45to225":
         return ss.vonmises(loc=m, kappa=kappa_r).pdf(grid)
     else:
@@ -84,7 +84,6 @@ def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
     p_theta_given_m = p_m_given_theta * tools.prior_ori(stim_ori_grid)[:, np.newaxis]
 
     # Normalize with p(m) to get posterior
-    # if normalize:
     p_theta_given_m = p_theta_given_m / trapezoid(p_theta_given_m, stim_ori_grid, axis=0)[np.newaxis, :]
     # p_theta_given_m = p_theta_given_m / np.sum(p_theta_given_m, axis=0)[np.newaxis, :]
 
@@ -152,14 +151,13 @@ def safe_value_dist(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
 
     safe_value, safe_prob = tools.ori_to_val_dist(stim_ori_grid, p_stim, type, line_frac = line_frac)
 
-    # nORMALIZATION not necessary 
-    # ps /= abs(trapezoid(ps, bin_centers, axis = -1)[:, np.newaxis])
+    safe_prob /= abs(trapezoid(safe_prob, safe_value, axis = -1)[:, np.newaxis])
 
     return safe_value, safe_prob
 
-def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type):
+def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, line_frac = 0.0):
 
-    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type)
+    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type, line_frac = line_frac)
 
     risky_value = x_value*risk_prob
     p_risky = p_value/risk_prob

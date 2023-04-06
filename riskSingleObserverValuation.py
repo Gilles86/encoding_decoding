@@ -133,7 +133,7 @@ def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     # Applying bayes rule to get the p(val/m). Combining evidence in representation with the prior over variable of interest
     p_val_given_m = p_m_given_val*np.array(val_prior)[:, np.newaxis]
 
-    # Normalize with p(m) = p(m|val)*p9val) that we just defined as p(val|m) in above line
+    # Normalize with p(m) = p(m|val)*p(val) that we just defined as p(val|m) in above line
     p_val_given_m = p_val_given_m / trapezoid(p_val_given_m, safe_value, axis=0)[np.newaxis,:]
 
     # Probability of estimating \hat{value} given val0
@@ -142,9 +142,13 @@ def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     # Get rid of m
     p_value_est_given_val0 = trapezoid(p_value_est_given_val0, rep_val_grid, axis=2)
 
-    # p_value_est_given_val0 /= trapezoid(p_value_est_given_val0, safe_value, axis=1)[:, np.newaxis]
+    p_value_est_given_val0 /= trapezoid(p_value_est_given_val0, safe_value, axis=1)[:, np.newaxis]
 
     return safe_value, p_value_est_given_val0
+
+def safe_value_dist(theta0, kappa_s, sigma_rep, type, line_frac = 0):
+    safe_value, safe_prob = value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = line_frac)
+    return safe_value, safe_prob
 
 def risky_value_dist(theta1, kappa_s, sigma_rep, risk_prob, type, line_frac = 0):
 

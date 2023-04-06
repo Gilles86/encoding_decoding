@@ -7,6 +7,7 @@ import scipy.stats as ss
 from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
+prior_used = "wei" #"steep", #wei
 experimentRange = "00to180" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
@@ -36,23 +37,29 @@ rep_ori_grid = np.linspace(start, end, 501) * np.pi / 90
 
 rep_val_grid = np.linspace(min_val, max_val, 501)
 
-# import riskSingleObserverPercept as model
+addedFactor = max_val
+if prior_used == "steep":
+    steepnessFactor = addedFactor*0.95 #addedFactor/factor_val*factor_val
+if prior_used == "wei": # generates prior of 2-abs(sin(x))
+    steepnessFactor = addedFactor*0.5
 
 # Getting a value function given a grid of orientations (stim_ori_grid for example). Always between 0 and 2pi.
 def value_function_ori(x, type, line_frac = 0):
     x = np.array(x)
     line = abs(stim_ori_grid/np.pi/2.*factor_val - max_val)*line_frac
+
     if experimentRange == "00to180":
 
         if type == "cdf_prior":
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi] = ((np.cos(x)[x <= np.pi]+2*x[x <= np.pi])/(4*np.pi-4)-1/(4*np.pi-4))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
-            value_function[x > np.pi] = ((-np.cos(x)[x > np.pi]-2+2*x[x > np.pi])/(4*np.pi-4)-1/(4*np.pi-4))*factor_val+min_val
 
-        if type == "increase_cdf_prior":
             value_function = np.zeros_like(x)
-            value_function[x <= np.pi] = ((np.cos(x)[x <= np.pi]+2*x[x <= np.pi])/(4*np.pi-4)-1/(4*np.pi-4))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
-            value_function[x > np.pi] = ((-np.cos(x)[x > np.pi]-2+2*x[x > np.pi])/(4*np.pi-4)-1/(4*np.pi-4))*factor_val+min_val
+            value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+            value_function[x > np.pi] = (((steepnessFactor)*-np.cos(x)[x > np.pi]-2*steepnessFactor+(addedFactor)*x[x > np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val
+
+        if type == "increase_cdf_prior":  # makes probabilities over values linearly increasing
+            value_function = np.zeros_like(x)
+            value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+            value_function[x > np.pi] = (((steepnessFactor)*-np.cos(x)[x > np.pi]-2*steepnessFactor+(addedFactor)*x[x > np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val
             value_function = np.sqrt(value_function)*factor_val+min_val
 
         if type == "prior":
@@ -61,8 +68,14 @@ def value_function_ori(x, type, line_frac = 0):
             value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = (max_val - (max_val-min_val)/2) - ((max_val-min_val)/4)*( - np.sin((x)[(x > np.pi/2) & (x <= 3*np.pi/2)]))
             value_function[x > 3*np.pi/2] = min_val - ((max_val-min_val)/4)*(np.sin((x)[x > 3*np.pi/2]))
             
-        if type == "linearPrior":
+        if type == "linearIncrease":
+            value_function = min_val + abs((max_val-min_val)*x/2/np.pi)
+
+        if type == "linearDecrease":
             value_function = max_val -abs((max_val-min_val)*x/2/np.pi)
+
+        if type == "increasingSin":
+            value_function = min_val + factor_val*np.sin(x/4.)      
 
         if type == "curvedPrior":
             value_function = np.zeros_like(x)
@@ -74,9 +87,6 @@ def value_function_ori(x, type, line_frac = 0):
             value_function[x <= np.pi/2] = min_val + ((max_val-min_val)/4)*(np.sin(x[x <= np.pi/2]))
             value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
             value_function[x > 3*np.pi/2] = ((max_val-min_val)/4)*(np.sin(x[x > 3*np.pi/2])) + max_val
-
-        if type == "inverseLinearPrior":
-            value_function = min_val + abs((max_val-min_val)*x/2/np.pi)
 
         if type == "inverseCurvedPrior":
             value_function = np.zeros_like(x)
@@ -160,7 +170,7 @@ def inverse_monotonic(y_0, type, line_frac = 0):
                 return i
 
     i = find_closest_index(y_0)
-    x_inverse = float(x[indices[i]]*90./np.pi)
+    x_inverse = float(x[indices[i]]) # returns in radians like everything else
     return x_inverse
 
 # This function takes in the original grid and the function that transforms the grid (random variable)
@@ -204,8 +214,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
 
         ps = f(bin_centers)
         
-        ps /= np.trapz(ps, bin_centers, axis=1)[:, np.newaxis]
-    
+    ps /= trapezoid(ps, bin_centers, axis=1)[:, np.newaxis]
     # we sort the probabilities on the grid such that the grid is sorted in an increasing order as well.
     # This is useful for other functions we have
     ps = ps[..., np.argsort(bin_centers)]
@@ -216,12 +225,11 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
 # Prior
 def prior_ori(x):
     if experimentRange == "00to180" or experimentRange == "45to225":
-        return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
+        return (addedFactor - np.abs(steepnessFactor*np.sin(x))) / (-4*steepnessFactor + 2*addedFactor*np.pi)# return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
     if experimentRange == "00to90" or experimentRange == "90to180":
         return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 2.0
     if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
         return (2 - np.abs(np.sin(x))) / (np.pi - 1)
-
 
 
 # analytical solutions for gradient of the original value function with respect to the orientations
@@ -300,4 +308,3 @@ def grad_value_ori(x, type, line_frac = 0.0):
     grad_val = grad_val + line_frac/np.pi/2.*factor_val
 
     return grad_val
-

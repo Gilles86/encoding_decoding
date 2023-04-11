@@ -30,7 +30,7 @@ def stimulus_ori_noise(x, kappa_s, grid):
     return p_noise_ori
 
 def sensory_ori_noise(m, kappa_r, grid):
-    sigma_rep = np.sqrt(1/(2*np.pi*kappa_r))
+    sigma_rep = np.sqrt(tools.factor_val/kappa_r)
     if experimentRange == "00to180" or experimentRange == "45to225":
         return ss.vonmises(loc=m, kappa=kappa_r).pdf(grid)
     else:
@@ -59,9 +59,6 @@ def MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False):
     # Integrate out different thetas, so we just have ms given theta0
     p_mOri_given_theta0 = trapezoid(p_mOri_given_theta0, stim_ori_grid, axis=1)
     # p_mOri_given_theta0 = np.sum(p_mOri_given_theta0, axis=1)
-
-    # dx = stim_ori_grid[..., 1:] - stim_ori_grid[..., :-1]
-    # x_stim = stim_ori_grid[:-1] + dx
     # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
     p_mOri_given_theta = stimulus_ori_noise(stim_ori_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_ori_grid[np.newaxis, :])[
                           ..., np.newaxis] * \
@@ -87,20 +84,20 @@ def prior_val(type):
     return stim_val_grid, ps
 
 
-def val_encoded(theta0, kappa_s, kappa_r, type):
+def val_encoded(theta0, kappa_s, kappa_r, type, line_frac = 0):
 
     p_mOri_given_theta0, p_mOri_given_theta = MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False)
 
-    rep_val_grid, p_mVal_given_Val0 = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta0, type)
+    rep_val_grid, p_mVal_given_Val0 = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta0, type, line_frac = line_frac)
  
-    rep_val_grid, p_mVal_given_Val = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta, type)
+    rep_val_grid, p_mVal_given_Val = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta, type, line_frac = line_frac)
 
     return rep_val_grid, p_mVal_given_Val0, p_mVal_given_Val
 
 # Take input orientation and gives the decoded distribution
-def value_bayesian_decoding(theta0, kappa_s, kappa_r, type):
+def value_bayesian_decoding(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
 
-    rep_val_grid, p_mVal_given_Val0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, type)
+    rep_val_grid, p_mVal_given_Val0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, type, line_frac = line_frac)
     
     # stim_val_grid*rep_val_grid
     p_val_given_mVal = p_mVal_given_Val*np.array(prior_val(type)[1])[:, np.newaxis]
@@ -116,11 +113,18 @@ def value_bayesian_decoding(theta0, kappa_s, kappa_r, type):
 
     # normalize (99% sure that not necessary)
     p_value_est_given_val0 /= abs(trapezoid(p_value_est_given_val0, stim_val_grid, axis=1)[:, np.newaxis])
+
     return rep_val_grid, stim_val_grid, p_value_est_given_val0
 
-def risky_value_dist(theta1, kappa_s, sigma_rep, risk_prob, type, interpolation_kind='linear', bins=bins, monotonic=True):
+def safe_value_dist(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
 
-    rep_val_grid, stim_val_grid, p_value_est_given_val0 = value_bayesian_decoding(theta1, kappa_s, sigma_rep, type, interpolation_kind=interpolation_kind, bins=bins, monotonic=monotonic)
+    rep_val_grid, safe_value, safe_prob = value_bayesian_decoding(theta0, kappa_s, kappa_r, type, line_frac = line_frac)
+
+    return safe_value, safe_prob
+
+def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, line_frac = 0.0):
+
+    stim_val_grid, p_value_est_given_val0 = safe_value_dist(theta1, kappa_s, kappa_r, type, line_frac = line_frac)
 
     risky_value = stim_val_grid*risk_prob
     p_risky = p_value_est_given_val0/risk_prob

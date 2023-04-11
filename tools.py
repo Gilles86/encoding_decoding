@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
 prior_used = "wei" #"steep", #wei
-experimentRange = "00to180" #"00to180" # "45to225"
+experimentRange = "45to225" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
 
@@ -47,57 +47,50 @@ if prior_used == "wei": # generates prior of 2-abs(sin(x))
 def value_function_ori(x, type, line_frac = 0):
     x = np.array(x)
     line = abs(stim_ori_grid/np.pi/2.*factor_val - max_val)*line_frac
+    if type == "cdf_prior":
+        value_function = np.zeros_like(x)
+        value_function[x >= 2*np.pi] = (((steepnessFactor)*np.cos(x)[x >= 2*np.pi]+(addedFactor)*(x-np.pi)[x >= 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
+        value_function[(x > np.pi) & (x < 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x < 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x < 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
 
-    if experimentRange == "00to180":
+    if type == "increase_cdf_prior":  # makes probabilities over values linearly increasing
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        value_function[x > np.pi] = (((steepnessFactor)*-np.cos(x)[x > np.pi]-2*steepnessFactor+(addedFactor)*x[x > np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val
+        value_function = np.sqrt(value_function)*factor_val+min_val
 
-        if type == "cdf_prior":
+    if type == "linearIncrease":
+        value_function = min_val + abs((max_val-min_val)*(x-displace)/2/np.pi)
 
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
-            value_function[x > np.pi] = (((steepnessFactor)*-np.cos(x)[x > np.pi]-2*steepnessFactor+(addedFactor)*x[x > np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val
+    if type == "linearDecrease":
+        value_function = max_val -abs((max_val-min_val)*(x-displace)/2/np.pi)
 
-        if type == "increase_cdf_prior":  # makes probabilities over values linearly increasing
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
-            value_function[x > np.pi] = (((steepnessFactor)*-np.cos(x)[x > np.pi]-2*steepnessFactor+(addedFactor)*x[x > np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val
-            value_function = np.sqrt(value_function)*factor_val+min_val
+    if type == "increasingSin":
+        value_function = min_val + factor_val*np.sin(x/4.)      
 
-        if type == "prior":
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi/2] = (max_val - ((max_val-min_val)/4)*(np.sin((x)[x <= np.pi/2])))
-            value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = (max_val - (max_val-min_val)/2) - ((max_val-min_val)/4)*( - np.sin((x)[(x > np.pi/2) & (x <= 3*np.pi/2)]))
-            value_function[x > 3*np.pi/2] = min_val - ((max_val-min_val)/4)*(np.sin((x)[x > 3*np.pi/2]))
-            
-        if type == "linearIncrease":
-            value_function = min_val + abs((max_val-min_val)*x/2/np.pi)
+    if type == "prior":
+        value_function = np.zeros_like(x)
+        value_function[(x < np.pi/2) | (x>2*np.pi)] = (max_val - ((max_val-min_val)/4)*(np.sin((x)[(x < np.pi/2) | (x>2*np.pi)])))-3*displace/(2*np.pi)*factor_val
+        value_function[(x >= np.pi/2) & (x <= 3*np.pi/2)] = (max_val - (max_val-min_val)/2) - ((max_val-min_val)/4)*( - np.sin((x)[(x >= np.pi/2) & (x <= 3*np.pi/2)]))+displace/(2*np.pi)*factor_val
+        value_function[(x > 3*np.pi/2) & (x<=2*np.pi)] = min_val - ((max_val-min_val)/4)*(np.sin((x)[(x > 3*np.pi/2) & (x<=2*np.pi)]))+displace/(2*np.pi)*factor_val
+        
 
-        if type == "linearDecrease":
-            value_function = max_val -abs((max_val-min_val)*x/2/np.pi)
+    if type == "curvedPrior":
+        value_function = np.zeros_like(x)
+        value_function[(x < np.pi/2) | (x>2*np.pi)] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[(x < np.pi/2) | (x>2*np.pi)]))-3*displace/(2*np.pi)*factor_val
+        value_function[(x >= np.pi/2) & (x<np.pi)] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[(x >= np.pi/2) & (x<np.pi)]))+displace/(2*np.pi)*factor_val
+        value_function[(x >= np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 -((max_val-min_val)/4)*(np.cos(x[(x >= np.pi) & (x <= np.pi*2)])+1)+displace/(2*np.pi)*factor_val
 
-        if type == "increasingSin":
-            value_function = min_val + factor_val*np.sin(x/4.)      
+    if type == "inversePrior":
+        value_function = np.zeros_like(x)
+        value_function[(x < np.pi/2) | (x>2*np.pi)] = min_val + ((max_val-min_val)/4)*(np.sin(x[(x < np.pi/2) | (x>2*np.pi)])) + 3*displace/(2*np.pi)*factor_val
+        value_function[(x >= np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x >= np.pi/2) & (x <= 3*np.pi/2)])) - displace/(2*np.pi)*factor_val
+        value_function[(x > 3*np.pi/2) & (x<=2*np.pi)] = ((max_val-min_val)/4)*(np.sin(x[(x > 3*np.pi/2) & (x<=2*np.pi)])) + max_val - displace/(2*np.pi)*factor_val
 
-        if type == "curvedPrior":
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
-            value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 -((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
-
-        if type == "inversePrior":
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi/2] = min_val + ((max_val-min_val)/4)*(np.sin(x[x <= np.pi/2]))
-            value_function[(x > np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
-            value_function[x > 3*np.pi/2] = ((max_val-min_val)/4)*(np.sin(x[x > 3*np.pi/2])) + max_val
-
-        if type == "inverseCurvedPrior":
-            value_function = np.zeros_like(x)
-            value_function[x <= np.pi] = min_val + ((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
-            value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 +((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
-
-
-    if experimentRange == "45to225":
-
-        if type == "cdf_prior":
-            value_function = integrate.cumtrapz(prior_ori(x-displace), stim_ori_grid, initial=0.0)*factor_val+min_val
+    if type == "inverseCurvedPrior":
+        value_function = np.zeros_like(x)
+        value_function[x <= np.pi] = min_val + ((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
+        value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 +((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
 
     order = np.argsort(value_function)[::-1]
     value_function = value_function*(1-line_frac)+line[order]
@@ -189,9 +182,9 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
     if monotonic:
         x_value = value_function_ori(x_stim, type, line_frac = line_frac)
         bin_centers = x_value
-        grad_val = np.gradient(x_value, x_stim) #grad_value_ori(x_stim, type, line_frac)
+        grad_val = abs(np.gradient(x_value, x_stim)) #grad_value_ori(x_stim, type, line_frac)
         grad_ori = 1/grad_val
-        ps = p_stim*abs(grad_ori)
+        ps = p_stim*grad_ori
 
     # If the function is not monotonic, we use histograms
     else:
@@ -214,7 +207,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
 
         ps = f(bin_centers)
         
-    ps /= trapezoid(ps, bin_centers, axis=1)[:, np.newaxis]
+    ps /= abs(trapezoid(ps, bin_centers, axis=1)[:, np.newaxis])
     # we sort the probabilities on the grid such that the grid is sorted in an increasing order as well.
     # This is useful for other functions we have
     ps = ps[..., np.argsort(bin_centers)]
@@ -230,81 +223,3 @@ def prior_ori(x):
         return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 2.0
     if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
         return (2 - np.abs(np.sin(x))) / (np.pi - 1)
-
-
-# analytical solutions for gradient of the original value function with respect to the orientations
-def grad_value_ori(x, type, line_frac = 0.0):
-    x = np.array(x)
-    if experimentRange == "00to180":
-
-        if type == "cdf_prior":
-            grad_val = prior_ori(x)*factor_val
-
-        if type == "increase_cdf_prior":
-            grad_val = prior_ori(x)*factor_val/2./np.sqrt(integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.00001))
-
-        if type == "prior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi/2] = ((max_val-min_val)/4)*(np.cos((x)[x <= np.pi/2]))
-            grad_val[(x > np.pi/2) & (x <= 3*np.pi/2)] = ((max_val-min_val)/4)*( - np.cos((x)[(x > np.pi/2) & (x <= 3*np.pi/2)]))
-            grad_val[x > 3*np.pi/2] = ((max_val-min_val)/4)*(np.cos((x)[x > 3*np.pi/2]))
-
-        if type == "linearPrior":
-            grad_val = -abs((max_val-min_val)*1/2/np.pi)
-
-        if type == "curvedPrior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi] = ((max_val-min_val)/4)*(1+np.sin(x[x <= np.pi]))
-            grad_val[(x > np.pi) & (x <= np.pi*2)] = -((max_val-min_val)/4)*(-np.sin(x[(x > np.pi) & (x <= np.pi*2)]))
-
-        if type == "inversePrior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi/2] = ((max_val-min_val)/4)*(np.cos(x[x <= np.pi/2]))
-            grad_val[(x > np.pi/2) & (x <= 3*np.pi/2)] = ((max_val-min_val)/4)*(2 - np.cos(x[(x > np.pi/2) & (x <= 3*np.pi/2)]))
-            grad_val[x > 3*np.pi/2] = ((max_val-min_val)/4)*(np.cos(x[x > 3*np.pi/2]))
-
-        if type == "inverseLinearPrior":
-            grad_val = abs((max_val-min_val)*1/2/np.pi)
-
-        if type == "inverseCurvedPrior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi] = ((max_val-min_val)/4)*(1+np.sin(x[x <= np.pi]))
-            grad_val[(x > np.pi) & (x <= np.pi*2)] = ((max_val-min_val)/4)*(-np.sin(x[(x > np.pi) & (x <= np.pi*2)]))
-
-    if experimentRange == "45to225":
-
-        if type == "cdf_prior":
-            grad_val = prior_ori(x-displace)*factor_val
-
-        if type == "prior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi+displace] = ((max_val-min_val)/4)*(1+np.sin((x-displace)[x <= np.pi+displace]))
-            grad_val[(x > np.pi+displace) & (x <= np.pi*2+displace)] = -((max_val-min_val)/4)*(-np.sin((x-displace)[(x > np.pi+displace) & (x <= np.pi*2+displace)])+1)
-
-        if type == "linearPrior":
-            grad_val = -abs((max_val-min_val)*(1)/2/np.pi)
-
-        if type == "curvedPrior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi/2+displace] = ((max_val-min_val)/4)*(np.cos((x-displace)[x <= np.pi/2+displace]))
-            grad_val[(x > np.pi/2+displace) & (x <= 3*np.pi/2+displace)] = - ((max_val-min_val)/4)*( - np.cos((x-displace)[(x > np.pi/2+displace) & (x <= 3*np.pi/2+displace)]))
-            grad_val[x > 3*np.pi/2+displace] = - ((max_val-min_val)/4)*(np.cos((x-displace)[x > 3*np.pi/2+displace]))
-
-        if type == "inversePrior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi+displace] = ((max_val-min_val)/4)*(1+np.sin((x-displace)[x <= np.pi+displace]))
-            grad_val[(x > np.pi+displace) & (x <= np.pi*2+displace)] = ((max_val-min_val)/4)*(-np.sin((x-displace)[(x > np.pi+displace) & (x <= np.pi*2+displace)])+1)
-
-
-        if type == "inverseLinearPrior":
-            grad_val = abs((max_val-min_val)*(1)/2/np.pi)
-
-        if type == "inverseCurvedPrior":
-            grad_val = np.zeros_like(x)
-            grad_val[x <= np.pi/2+displace] = ((max_val-min_val)/4)*(-np.cos((x-displace)[x <= np.pi/2+displace]))
-            grad_val[(x > np.pi/2+displace) & (x <= 3*np.pi/2+displace)] = ((max_val-min_val)/4)*(2 - np.cos((x-displace)[(x > np.pi/2+displace) & (x <= 3*np.pi/2+displace)]))
-            grad_val[x > 3*np.pi/2+displace] = ((max_val-min_val)/4)*(np.cos((x-displace)[x > 3*np.pi/2+displace]))
-
-    grad_val = grad_val + line_frac/np.pi/2.*factor_val
-
-    return grad_val

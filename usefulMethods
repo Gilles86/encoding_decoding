@@ -192,7 +192,6 @@ def prior_ori(x):  ## This one is for modelling the steeper prior
     if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
         return (2 - np.abs(np.sin(x))) / (np.pi - 1)
 
-
 # analytical solutions for gradient of the original value function with respect to the orientations
 def grad_value_ori(x, type, line_frac = 0.0):
     x = np.array(x)
@@ -269,4 +268,3 @@ def grad_value_ori(x, type, line_frac = 0.0):
     grad_val = grad_val + line_frac/np.pi/2.*factor_val
 
     return grad_val
-

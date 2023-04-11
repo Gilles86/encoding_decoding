@@ -1,0 +1,19 @@
+import numpy as np
+import scipy.stats as ss
+from scipy import interpolate
+from scipy import integrate
+from scipy.integrate import simpson, trapezoid, cumulative_trapezoid, fixed_quad
+import scipy.stats as ss
+from scipy.optimize import minimize
+
+import tools as tools
+import riskSingleObserverPercept as perception
+
+# A presented angle with stimulus noise kappa_s leads to the distribution of angle estimates
+# that come out of efficient encoding and bayesian decoding 
+def ori_posterior(theta0, kappa_s, kappa_r, normalize = False):
+    ori_posterior = perception.bayesian_decoding(theta0, kappa_s, kappa_r, normalize = normalize)
+    return ori_posterior
+
+
+

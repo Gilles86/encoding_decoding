@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
 prior_used = "wei" #"steep", #wei
-experimentRange = "45to225" #"00to180" # "45to225"
+experimentRange = "00to180" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
 
@@ -169,6 +169,9 @@ def inverse_monotonic(y_0, type, line_frac = 0):
 # This function takes in the original grid and the function that transforms the grid (random variable)
 # and then throws out the transformed gridwith the function and the probability density
 def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, interpolation_kind='linear'):
+    # The last dimension of p gives the probability distribution over the original grid
+    # the first dimension could refer to another variable which dictates the probability distribution
+    # So for example, for different thetas we could have distributions centered differently on stim_ori_grid 
     x_stim = np.array(grid)
     p_stim = p
 
@@ -183,8 +186,9 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
         x_value = value_function_ori(x_stim, type, line_frac = line_frac)
         bin_centers = x_value
         grad_val = abs(np.gradient(x_value, x_stim)) #grad_value_ori(x_stim, type, line_frac)
-        grad_ori = 1/grad_val
-        ps = p_stim*grad_ori
+        ps = p_stim
+        # The last dimension of p which gives probability is stretched for new grid
+        ps[...,:] = ps[...,:]/grad_val
 
     # If the function is not monotonic, we use histograms
     else:

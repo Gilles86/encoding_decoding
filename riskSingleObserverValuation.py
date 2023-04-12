@@ -25,6 +25,9 @@ factor_val = max_val - min_val
 # Getting a prior over values given a orientation grid and a type
 def prior_val(type, line_frac = 0):
     p_ori = tools.prior_ori(stim_ori_grid)
+    # Probability on each point of ori grid can be converted to probability on val grid points.
+    # the value grid is just a functional transform of ori grid. stim_val_grid is simply the transform of
+    #the original stim_otri_grid
     stim_val_grid, ps = tools.ori_to_val_dist(stim_ori_grid, p_ori, type, line_frac)
     ps = np.squeeze(ps) # Brings it back to 1 dime
     return stim_val_grid, ps
@@ -53,6 +56,8 @@ def stimulus_val_noise(x, kappa_s, grid, type, line_frac = 0.0):
 
     p_noise_ori = ss.vonmises(loc=x, kappa=kappa_s).pdf(grid[np.newaxis, :])
 
+    # The second dimension of p which hass probability over original geid gets changed to probability
+    # over new grid. the new grid is also returned. The first dimension remains unchanged for ps.
     stim_val_grid, ps = tools.ori_to_val_dist(grid, p_noise_ori, type, line_frac = line_frac)
 
     return stim_val_grid, ps 
@@ -65,19 +70,6 @@ def stimulus_val_noise(x, kappa_s, grid, type, line_frac = 0.0):
 # normal in my opinion. hOWEVER, IF IT IS 2 QUADRANTS, SHOULD be a recursive value that repeats back in opposite direction.
 def sensory_noise(m, sigma_rep, grid, type):
     truncBoth = ss.truncnorm.pdf(grid,(min_val - m) / sigma_rep, (max_val -m) / sigma_rep, m, sigma_rep)
-    # truncUp = ss.truncnorm.pdf(grid, (-np.Inf - m) / sigma_rep, (1. - m) / sigma_rep, m, sigma_rep)
-    # truncLow = ss.truncnorm.pdf(grid, (0.0 - m) / sigma_rep, (np.Inf - m) / sigma_rep, m, sigma_rep)
-    # foldUp = ss.foldnorm.pdf(1-grid, (1-m)/sigma_rep, 0.0, sigma_rep) # 0.0 here is essentially the point of the folding
-    # foldLow = ss.foldnorm.pdf(grid, m/sigma_rep, 0.0, sigma_rep)
-    # if experimentRange == "00to90" or "90to180":
-    #     if type == "linearPrior" or type == "prior" or type =="curvedPrior":
-    #         return (1-m)*foldLow + m*truncUp # The lowed values get folded while upper ones are truncated
-    #     if type == "inverseLinearPrior" or type == "inversePrior" or type =="inverseCurvedPrior":
-    #         return m*foldUp + (1-m)*truncLow # The lowed values get truncated while upper ones are folded
-    # if experimentRange == "00to180" or experimentRange == "noBoundaryEffects":
-        # We assume that they represent the information here totally and the bounds do not mean truncation but rather,
-        # they jusst shift the boundary values to include 5 standard deviations from the noise, whatever the noise is
-        # return ss.norm.pdf(grid, m+5*sigma_rep*(0.5-m), sigma_rep)
     return truncBoth
 
 # Take input orientation and gives the encoded distribution over value representation
@@ -99,12 +91,12 @@ def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     p_m_given_val = sensory_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
 
     # Combine sensory and stimulus noise
-    p_m_given_val0 = p_m_given_val * p_val_given_theta0[..., np.newaxis]
+    p_m_given_theta0 = p_m_given_val * p_val_given_theta0[..., np.newaxis]
 
     # Integrate out different generated values (due to stim noise), so we just have ms given theta0. The integration is on
     # value grid generated from mapping of orientation to value. The spacing of the grid depends on whether the mapping was
     # linear or non linear
-    p_m_given_val0 = trapezoid(p_m_given_val0, stim_val_grid, axis=1)
+    p_m_given_theta0 = trapezoid(p_m_given_theta0, stim_val_grid, axis=1)
 
     # Make a big array that for many thetas gives the probability of observing ms (value likelihood)
     p_m_given_theta = (stimulus_val_noise(stim_ori_grid, kappa_s, stim_ori_grid, type)[1])[..., np.newaxis] *\
@@ -114,18 +106,23 @@ def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     # points pon the theta grid
     p_m_given_theta = trapezoid(p_m_given_theta, stim_val_grid, axis=1)
 
+    # Since the value function is monotonic, each theta gets transformed to the value grid. The prob
+    #over values for a theta is the same as the prob over values for the given transformed val for the theta
+    # Rearranging thetas such that p_m_given_val is on an increasing value grid always
+    p_m_given_val = p_m_given_theta[np.argsort(tools.value_function_ori(tools.stim_ori_grid, type))]
+
     # Each point of theta in theta grid can be transformed to value space and the corresponding probabilities into tyhat space by using 
-    # the general function fropm tools
-    stim_val_grid, p_m_given_val = tools.ori_to_val_dist(stim_ori_grid, p_m_given_theta, type, line_frac = line_frac)
+    # the general function from tools
+    # stim_val_grid, p_m_given_val = tools.ori_to_val_dist(stim_ori_grid, p_m_given_theta, type, line_frac = line_frac)
 
     # Representations of values
-    return p_m_given_val0, p_m_given_val
+    return p_m_given_theta0, p_m_given_val
 
 # Take input orientation and gives the decoded distribution
 def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
 
     # encoded m's for given presented value and value grid (distorted val grid based on function)
-    p_m_given_val0, p_m_given_val = value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac=line_frac)
+    p_m_given_theta0, p_m_given_val = value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac=line_frac)
 
     # we need to use the transformed stim vbalues and prior over values now
     safe_value, val_prior = prior_val(type, line_frac = line_frac)
@@ -137,14 +134,14 @@ def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     p_val_given_m = p_val_given_m / trapezoid(p_val_given_m, safe_value, axis=0)[np.newaxis,:]
 
     # Probability of estimating \hat{value} given val0
-    p_value_est_given_val0 = p_m_given_val0[:, np.newaxis, :] * p_val_given_m[np.newaxis, ...]
+    p_value_est_given_theta0 = p_m_given_theta0[:, np.newaxis, :] * p_val_given_m[np.newaxis, ...]
 
     # Get rid of m
-    p_value_est_given_val0 = trapezoid(p_value_est_given_val0, rep_val_grid, axis=2)
+    p_value_est_given_theta0 = trapezoid(p_value_est_given_theta0, rep_val_grid, axis=2)
 
-    p_value_est_given_val0 /= trapezoid(p_value_est_given_val0, safe_value, axis=1)[:, np.newaxis]
+    p_value_est_given_theta0 /= trapezoid(p_value_est_given_theta0, safe_value, axis=1)[:, np.newaxis]
 
-    return safe_value, p_value_est_given_val0
+    return safe_value, p_value_est_given_theta0
 
 def safe_value_dist(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     safe_value, safe_prob = value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = line_frac)

@@ -83,21 +83,23 @@ def prior_val(type):
     ps = np.squeeze(ps) # Brings it back to 1 dime
     return stim_val_grid, ps
 
-
 def val_encoded(theta0, kappa_s, kappa_r, type, line_frac = 0):
 
     p_mOri_given_theta0, p_mOri_given_theta = MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False)
 
-    rep_val_grid, p_mVal_given_Val0 = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta0, type, line_frac = line_frac)
+    # Converting from sensory represntation of ori to sensory repressentation of value assuming
+    # that the same mapping maps the ori to val space in sensory space as in stimulus space.
+    rep_val_grid, p_mVal_given_theta0 = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta0, type, line_frac = line_frac)
  
-    rep_val_grid, p_mVal_given_Val = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta, type, line_frac = line_frac)
+    rep_val_grid, p_mVal_given_theta = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta, type, line_frac = line_frac)
+    p_mVal_given_Val = p_mVal_given_theta[np.argsort(tools.value_function_ori(tools.stim_ori_grid, type))]
 
-    return rep_val_grid, p_mVal_given_Val0, p_mVal_given_Val
+    return rep_val_grid, p_mVal_given_theta0, p_mVal_given_Val
 
 # Take input orientation and gives the decoded distribution
 def value_bayesian_decoding(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
 
-    rep_val_grid, p_mVal_given_Val0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, type, line_frac = line_frac)
+    rep_val_grid, p_mVal_given_theta0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, type, line_frac = line_frac)
     
     # stim_val_grid*rep_val_grid
     p_val_given_mVal = p_mVal_given_Val*np.array(prior_val(type)[1])[:, np.newaxis]
@@ -107,7 +109,7 @@ def value_bayesian_decoding(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
     p_val_given_mVal = p_val_given_mVal / abs(trapezoid(p_val_given_mVal, stim_val_grid, axis=0)[np.newaxis,:])
 
     # theta0 x theta_tilde x m
-    p_value_est_given_val0 = p_mVal_given_Val0[:, np.newaxis, :] * p_val_given_mVal[np.newaxis, ...]
+    p_value_est_given_val0 = p_mVal_given_theta0[:, np.newaxis, :] * p_val_given_mVal[np.newaxis, ...]
     # Get rid of m
     p_value_est_given_val0 = abs(trapezoid(p_value_est_given_val0, rep_val_grid, axis=2))
 

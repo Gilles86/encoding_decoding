@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
 prior_used = "wei" #"steep", #wei
-experimentRange = "00to180" #"00to180" # "45to225"
+experimentRange = "45to225" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
 

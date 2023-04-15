@@ -9,37 +9,8 @@ from scipy.optimize import minimize
 import tools as tools
 import riskSingleObserverPercept as perception
 
-experimentRange = tools.experimentRange
-start = tools.start
-end = tools.end
-
 stim_ori_grid = tools.stim_ori_grid
 rep_val_grid = tools.rep_val_grid
-
-max_val = tools.max_val
-min_val = tools.min_val
-
-factor_val = max_val - min_val
-
-# Getting a prior over values given a orientation grid and a type
-def prior_val(type, line_frac = 0):
-    p_ori = tools.prior_ori(stim_ori_grid)
-    # Probability on each point of ori grid can be converted to probability on val grid points.
-    # the value grid is just a functional transform of ori grid. stim_val_grid is simply the transform of
-    #the original stim_otri_grid
-    stim_val_grid, ps = tools.ori_to_val_dist(stim_ori_grid, p_ori, type, line_frac)
-    ps = np.squeeze(ps) # Brings it back to 1 dime
-    return stim_val_grid, ps
-
-# Takes in the orientation grid and gives out the cdf over values
-def cdf_val(type, line_frac = 0):
-    stim_val_grid, ps = prior_val(type, line_frac = line_frac)
-    cdf_value = np.squeeze(integrate.cumtrapz(ps, stim_val_grid, initial=0.0))*factor_val
-    return stim_val_grid, cdf_value
-
-def sensory_val_noise(m, sigma_rep, grid, type):
-    truncBoth = ss.truncnorm.pdf(grid,(min_val - m) / sigma_rep, (max_val -m) / sigma_rep, m, sigma_rep)
-    return truncBoth
 
 # Gives the value distribution output coming out of the perceptual system
 def input_to_val_system(theta0, kappa_s, kappa_r, type):
@@ -55,12 +26,12 @@ def value_efficient_encoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_fra
 
     # The new grid is basically just the original grid transformed with the value function
     # The cdf over the new grid is basically the probability over the new grid integrated over the new grid
-    stim_val_grid, cdf_value = cdf_val(type)
+    rep_val_grid, cdf_value = tools.cdf_val(type)
 
     # Add sensory noise to see what ms for value you get given a value 0 - value_gen_rep x m_gen(rep)
     # Each presented value gives a distribution in sensory space that is centered around the distorted mean according to the cdf
     # of the encoded variable (cdf_val) and on an equallyt sized representational grid.
-    p_mVal_given_val = sensory_val_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
+    p_mVal_given_val = tools.sensory_val_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
 
     # Combine sensory and stimulus noise
     p_mVal_given_theta0 = p_mVal_given_val * val_input[..., np.newaxis]
@@ -72,7 +43,7 @@ def value_efficient_encoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_fra
 
     # now useful for decode later
     p_mVal_given_val = input_to_val_system(stim_ori_grid, kappa_s, kappa_r, type)[1] [..., np.newaxis] *\
-        sensory_val_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
+        tools.sensory_val_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
 
     # Integrate out the original values resulting from noisy stimulus thetas. We now get a grid of m's for all possible equally spaced
     # points pon the theta grid
@@ -93,7 +64,7 @@ def value_bayesian_decoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac
     p_mVal_given_theta0, p_mVal_given_val = value_efficient_encoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac=line_frac)
 
     # we need to use the transformed stim vbalues and prior over values now
-    safe_value, val_prior = prior_val(type, line_frac = line_frac)
+    safe_value, val_prior = tools.prior_val(type, line_frac = line_frac)
 
     # Applying bayes rule to get the p(val/m). Combining evidence in representation with the prior over variable of interest
     p_val_given_mVal = p_mVal_given_val*np.array(val_prior)[:, np.newaxis]

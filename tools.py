@@ -7,8 +7,9 @@ import scipy.stats as ss
 from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
-prior_used = "wei" #"steep", #wei
-experimentRange = "45to225" #"00to180" # "45to225"
+encoding_prior_used = "wei" #"steep", #wei
+contextual_prior = "uniform"
+experimentRange = "00to180" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
 
@@ -30,6 +31,7 @@ if experimentRange == "45to225":
     end = 225
     start = 45
 
+factor_ori = (end-start)/90.*np.pi
 displace = start/90.*np.pi
 
 stim_ori_grid = np.linspace(start, end, 501) * np.pi / 90
@@ -38,59 +40,33 @@ rep_ori_grid = np.linspace(start, end, 501) * np.pi / 90
 rep_val_grid = np.linspace(min_val, max_val, 501)
 
 addedFactor = max_val
-if prior_used == "steep":
+if encoding_prior_used == "steep":
     steepnessFactor = addedFactor*0.95 #addedFactor/factor_val*factor_val
-if prior_used == "wei": # generates prior of 2-abs(sin(x))
+if encoding_prior_used == "wei": # generates prior of 2-abs(sin(x))
     steepnessFactor = addedFactor*0.5
 
 # Getting a value function given a grid of orientations (stim_ori_grid for example). Always between 0 and 2pi.
 def value_function_ori(x, type, line_frac = 0):
     x = np.array(x)
     line = abs(stim_ori_grid/np.pi/2.*factor_val - max_val)*line_frac
+
+    if type == "linearIncrease":
+        value_function = min_val + abs((max_val-min_val)*(x-displace)/2/np.pi)
+    
     if type == "cdf_prior":
         value_function = np.zeros_like(x)
         value_function[x >= 2*np.pi] = (((steepnessFactor)*np.cos(x)[x >= 2*np.pi]+(addedFactor)*(x-np.pi)[x >= 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
         value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
         value_function[(x > np.pi) & (x < 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x < 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x < 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
 
-    if type == "increase_cdf_prior":  # makes probabilities over values linearly increasing
-        value_function = np.zeros_like(x)
-        value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
-        value_function[x > np.pi] = (((steepnessFactor)*-np.cos(x)[x > np.pi]-2*steepnessFactor+(addedFactor)*x[x > np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val
-        value_function = np.sqrt(value_function)*factor_val+min_val
-
-    if type == "linearIncrease":
-        value_function = min_val + abs((max_val-min_val)*(x-displace)/2/np.pi)
-
-    if type == "linearDecrease":
-        value_function = max_val -abs((max_val-min_val)*(x-displace)/2/np.pi)
-
     if type == "increasingSin":
-        value_function = min_val + factor_val*np.sin(x/4.)      
-
-    if type == "prior":
-        value_function = np.zeros_like(x)
-        value_function[(x < np.pi/2) | (x>2*np.pi)] = (max_val - ((max_val-min_val)/4)*(np.sin((x)[(x < np.pi/2) | (x>2*np.pi)])))-3*displace/(2*np.pi)*factor_val
-        value_function[(x >= np.pi/2) & (x <= 3*np.pi/2)] = (max_val - (max_val-min_val)/2) - ((max_val-min_val)/4)*( - np.sin((x)[(x >= np.pi/2) & (x <= 3*np.pi/2)]))+displace/(2*np.pi)*factor_val
-        value_function[(x > 3*np.pi/2) & (x<=2*np.pi)] = min_val - ((max_val-min_val)/4)*(np.sin((x)[(x > 3*np.pi/2) & (x<=2*np.pi)]))+displace/(2*np.pi)*factor_val
-        
-
-    if type == "curvedPrior":
-        value_function = np.zeros_like(x)
-        value_function[(x < np.pi/2) | (x>2*np.pi)] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[(x < np.pi/2) | (x>2*np.pi)]))-3*displace/(2*np.pi)*factor_val
-        value_function[(x >= np.pi/2) & (x<np.pi)] = (max_val)-((max_val-min_val)/4)*(1-np.cos(x[(x >= np.pi/2) & (x<np.pi)]))+displace/(2*np.pi)*factor_val
-        value_function[(x >= np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 -((max_val-min_val)/4)*(np.cos(x[(x >= np.pi) & (x <= np.pi*2)])+1)+displace/(2*np.pi)*factor_val
+        value_function = min_val + factor_val*np.sin(x/6.)      
 
     if type == "inversePrior":
         value_function = np.zeros_like(x)
         value_function[(x < np.pi/2) | (x>2*np.pi)] = min_val + ((max_val-min_val)/4)*(np.sin(x[(x < np.pi/2) | (x>2*np.pi)])) + 3*displace/(2*np.pi)*factor_val
         value_function[(x >= np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x >= np.pi/2) & (x <= 3*np.pi/2)])) - displace/(2*np.pi)*factor_val
         value_function[(x > 3*np.pi/2) & (x<=2*np.pi)] = ((max_val-min_val)/4)*(np.sin(x[(x > 3*np.pi/2) & (x<=2*np.pi)])) + max_val - displace/(2*np.pi)*factor_val
-
-    if type == "inverseCurvedPrior":
-        value_function = np.zeros_like(x)
-        value_function[x <= np.pi] = min_val + ((max_val-min_val)/4)*(1-np.cos(x[x <= np.pi]))
-        value_function[(x > np.pi) & (x <= np.pi*2)] = (max_val+min_val)/2 +((max_val-min_val)/4)*(np.cos(x[(x > np.pi) & (x <= np.pi*2)])+1)
 
     order = np.argsort(value_function)[::-1]
     value_function = value_function*(1-line_frac)+line[order]
@@ -219,7 +195,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
 
     return bin_centers, ps
 
-# Prior
+# Prior here dictates the encoding of orientations and the cdf which governs the encoding transformation.
 def prior_ori(x):
     if experimentRange == "00to180" or experimentRange == "45to225":
         return (addedFactor - np.abs(steepnessFactor*np.sin(x))) / (-4*steepnessFactor + 2*addedFactor*np.pi)# return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
@@ -227,3 +203,72 @@ def prior_ori(x):
         return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 2.0
     if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "90to135" or experimentRange == "135to180":
         return (2 - np.abs(np.sin(x))) / (np.pi - 1)
+    
+def cdf_ori(x, grid): # goes from 0 to 2pi
+    cdf_ori = integrate.cumtrapz(prior_ori(x), grid, initial=0.0)*factor_ori
+    return cdf_ori
+
+def cdf_ori_fun(x):
+    cdf_o = cdf_ori(stim_ori_grid, stim_ori_grid)
+    f = interpolate.interp1d(stim_ori_grid, cdf_o, axis=0, kind="linear")
+    cdf_point = f(x)
+    return cdf_point
+    
+
+## This is now the contextual prior which governs the prior used in bAYESIAN DECODING OF ORIENTATIONS AND ALSO 
+# the priors formed for values and encoding of values (cdf_val)
+def context_prior_ori(x):
+    if contextual_prior == "uniform":
+        return np.repeat(1/(2.*np.pi), len(x))
+    if contextual_prior == "increasing":
+        return (np.pi+x)/(2*(np.pi**2))
+    if contextual_prior == "decreasing":
+        return (3*np.pi-x)/(2*(np.pi**2))
+
+# Getting a prior over values given a orientation grid and a type
+def prior_val(type, line_frac = 0):
+    p_ori = context_prior_ori(stim_ori_grid)
+    # Probability on each point of ori grid can be converted to probability on val grid points.
+    # the value grid is just a functional transform of ori grid. stim_val_grid is simply the transform of
+    #the original stim_otri_grid
+    stim_val_grid, ps = ori_to_val_dist(stim_ori_grid, p_ori, type, line_frac)
+    ps = np.squeeze(ps) # Brings it back to 1 dime
+    return stim_val_grid, ps
+
+# Takes in the orientation grid and gives out the cdf over values
+def cdf_val(type, line_frac = 0):
+    stim_val_grid, ps = prior_val(type, line_frac = line_frac)
+    cdf_value = np.squeeze(integrate.cumtrapz(ps, stim_val_grid, initial=0.0))*factor_val
+    return stim_val_grid, cdf_value
+
+def stimulus_ori_noise(x, kappa_s, grid):
+    # return np.exp(kappa_s*(np.cos(x - grid)-1))
+    return ss.vonmises(loc=x, kappa=kappa_s).pdf(grid)
+
+def sensory_ori_noise(m, kappa_r, grid):
+    sigma_rep = np.sqrt(factor_val/kappa_r)
+    if experimentRange == "00to180" or experimentRange == "45to225":
+        return ss.vonmises(loc=m, kappa=kappa_r).pdf(grid)
+    else:
+        truncBoth = ss.truncnorm.pdf(grid,(start*np.pi/90 - m) / sigma_rep, (end*np.pi/90-m) / sigma_rep, m, sigma_rep)
+        return truncBoth
+    
+# Getting the noisy input stimulus distribution in value space mapping
+# Input parameters define noise in orientation space buy function gives out the noisy distribution in value space
+def stimulus_val_noise(x, kappa_s, grid, type, line_frac = 0.0):
+    if np.isscalar(x):
+        x = np.array([x])
+    else:
+        x = np.array(x)
+    x = x[:, np.newaxis]
+
+    p_noise_ori = ss.vonmises(loc=x, kappa=kappa_s).pdf(grid[np.newaxis, :])
+    # The second dimension of p which hass probability over original geid gets changed to probability
+    # over new grid. the new grid is also returned. The first dimension remains unchanged for ps.
+    stim_val_grid, ps = ori_to_val_dist(grid, p_noise_ori, type, line_frac = line_frac)
+
+    return stim_val_grid, ps
+
+def sensory_val_noise(m, sigma_rep, grid):
+    truncBoth = ss.truncnorm.pdf(grid,(min_val - m) / sigma_rep, (max_val -m) / sigma_rep, m, sigma_rep)
+    return truncBoth

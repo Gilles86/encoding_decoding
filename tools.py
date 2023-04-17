@@ -55,9 +55,9 @@ def value_function_ori(x, type, line_frac = 0):
     
     if type == "cdf_prior":
         value_function = np.zeros_like(x)
-        value_function[x >= 2*np.pi] = (((steepnessFactor)*np.cos(x)[x >= 2*np.pi]+(addedFactor)*(x-np.pi)[x >= 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        value_function[x > 2*np.pi] = (((steepnessFactor)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
         value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
-        value_function[(x > np.pi) & (x < 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x < 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x < 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
+        value_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
 
     if type == "increasingSin":
         value_function = min_val + factor_val*np.sin(x/6.)      
@@ -207,14 +207,7 @@ def prior_ori(x):
 def cdf_ori(x, grid): # goes from 0 to 2pi
     cdf_ori = integrate.cumtrapz(prior_ori(x), grid, initial=0.0)*factor_ori
     return cdf_ori
-
-def cdf_ori_fun(x):
-    cdf_o = cdf_ori(stim_ori_grid, stim_ori_grid)
-    f = interpolate.interp1d(stim_ori_grid, cdf_o, axis=0, kind="linear")
-    cdf_point = f(x)
-    return cdf_point
     
-
 ## This is now the contextual prior which governs the prior used in bAYESIAN DECODING OF ORIENTATIONS AND ALSO 
 # the priors formed for values and encoding of values (cdf_val)
 def context_prior_ori(x):
@@ -234,6 +227,7 @@ def prior_val(type, line_frac = 0):
     stim_val_grid, ps = ori_to_val_dist(stim_ori_grid, p_ori, type, line_frac)
     ps = np.squeeze(ps) # Brings it back to 1 dime
     return stim_val_grid, ps
+
 
 # Takes in the orientation grid and gives out the cdf over values
 def cdf_val(type, line_frac = 0):

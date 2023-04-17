@@ -350,3 +350,16 @@ def grad_value_ori(x, type, line_frac = 0.0):
     grad_val = grad_val + line_frac/np.pi/2.*factor_val
 
     return grad_val
+
+# Gives prior on equally spaced rep_val_grid
+def prior_val_uniform_grid(type, line_frac = 0):
+    s_grid, ps = prior_val(type, line_frac = line_frac)
+    f = interpolate.interp1d(s_grid, ps, axis=0, kind="linear")
+    p_val = f(rep_val_grid)
+    return rep_val_grid, p_val
+
+def cdf_ori_fun(x):
+    cdf_o = cdf_ori(stim_ori_grid, stim_ori_grid)
+    f = interpolate.interp1d(stim_ori_grid, cdf_o, axis=0, kind="linear")
+    cdf_point = f(x)
+    return cdf_point

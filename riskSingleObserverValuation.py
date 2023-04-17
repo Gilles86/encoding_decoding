@@ -28,7 +28,7 @@ def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     # Add sensory noise to see what ms for value you get given a value 0 - value_gen_rep x m_gen(rep)
     # Each presented value gives a distribution in sensory space that is centered around the distorted mean according to the cdf
     # of the encoded variable (cdf_val) and on an equallyt sized representational grid.
-    p_m_given_val = tools.sensory_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
+    p_m_given_val = tools.sensory_val_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
 
     # Combine sensory and stimulus noise
     p_m_given_theta0 = p_m_given_val * p_stimVal_given_theta0[..., np.newaxis]
@@ -40,7 +40,7 @@ def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
 
     # Make a big array that for many thetas gives the probability of observing ms (value likelihood)
     p_m_given_theta = (tools.stimulus_val_noise(stim_ori_grid, kappa_s, stim_ori_grid, type)[1])[..., np.newaxis] *\
-        tools.sensory_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :], type)
+        tools.sensory_val_noise(cdf_value[np.newaxis, :, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
 
     # Integrate out the original values resulting from noisy stimulus thetas. We now get a grid of m's for all possible equally spaced
     # points pon the theta grid
@@ -51,11 +51,8 @@ def value_efficient_encoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     # Rearranging thetas such that p_m_given_val is on an increasing value grid always
     p_m_given_val = p_m_given_theta[np.argsort(tools.value_function_ori(tools.stim_ori_grid, type))]
 
-    # Each point of theta in theta grid can be transformed to value space and the corresponding probabilities into tyhat space by using 
-    # the general function from tools
-    # stim_val_grid, p_m_given_val = tools.ori_to_val_dist(stim_ori_grid, p_m_given_theta, type, line_frac = line_frac)
-
-    # Representations of values
+    # p_m_given_theta0 is probability on uniform rep_val_grid, while p_m_given_val is also probability 
+    # of m on unioform rep grid but for values (1st dim) coming from non uniform stim_val_grid
     return p_m_given_theta0, p_m_given_val
 
 # Take input orientation and gives the decoded distribution
@@ -69,7 +66,9 @@ def value_bayesian_decoding(theta0, kappa_s, sigma_rep, type, line_frac = 0):
     # perception of the experiment.
     safe_value, val_prior = tools.prior_val(type, line_frac = line_frac)
 
-    # Applying bayes rule to get the p(val/m). Combining evidence in representation with the prior over variable of interest
+    # Applying bayes rule to get the p(val/m). Combining evidence in representation with the prior over variable of interest.
+    # p_m_given_val is vals from non unoform stim_val_grid and also the priors are over that non unofrkm grid.
+    # So the below multiplication can be performed
     p_val_given_m = p_m_given_val*np.array(val_prior)[:, np.newaxis]
 
     # Normalize with p(m) = p(m|val)*p(val) that we just defined as p(val|m) in above line

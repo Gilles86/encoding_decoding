@@ -32,6 +32,12 @@ def MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False):
     p_mOri_given_theta0 = trapezoid(p_mOri_given_theta0, stim_ori_grid, axis=1)
     # p_mOri_given_theta0 = np.sum(p_mOri_given_theta0, axis=1)
 
+
+    # Combine sensory and stimulus noise
+    p_mOri_given_theta0 = p_mOri_given_theta * p_theta_given_theta0[..., np.newaxis]
+    p_mOri_given_theta0 = trapezoid(p_mOri_given_theta0, stim_ori_grid, axis=1)
+    # p_mOri_given_theta0 = np.sum(p_mOri_given_theta0, axis=1)
+
     # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
     p_mOri_given_theta = tools.stimulus_ori_noise(stim_ori_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_ori_grid[np.newaxis, :])[
                           ..., np.newaxis] * \
@@ -44,6 +50,7 @@ def MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False):
         # p_m_given_theta /= trapezoid(p_m_given_theta, stim_grid, axis=1)[:, np.newaxis, :]
         p_mOri_given_theta /= trapezoid(p_mOri_given_theta, rep_ori_grid, axis=1)[:, np.newaxis]
 
+    # The mOri probabilities are on equally sized grids.
     return p_mOri_given_theta0, p_mOri_given_theta
 
 def val_encoded(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = 0):
@@ -52,46 +59,53 @@ def val_encoded(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = 0):
 
     #p_mOri_given_theta0 is 1*rep_ori_grid. Each of the rep_ori_grid creates a noise value representation
     mVal = tools.value_function_ori(rep_ori_grid, type, line_frac = line_frac)
-    p_mVal_given_theta0 = p_mOri_given_theta0 * tools.sensory_val_noise(mVal[np.newaxis,:, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
+    # 1*uniform rep_ori_grid * uniform rep_val_grid
+    p_mVal_given_theta0 = p_mOri_given_theta0[..., np.newaxis] * tools.sensory_val_noise(mVal[np.newaxis,:, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
     p_mVal_given_theta0 = trapezoid(p_mVal_given_theta0, rep_ori_grid, axis = 1)
 
-    p_mVal_given_theta = p_mOri_given_theta * tools.sensory_val_noise(mVal[np.newaxis,:, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
+    # Now for all possible thetas
+    p_mVal_given_theta = p_mOri_given_theta[..., np.newaxis] * tools.sensory_val_noise(mVal[np.newaxis,:, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
+    # Size now is converted to stim_ori_grid * rep_val_grid, both are uniformly spaced
     p_mVal_given_theta = trapezoid(p_mVal_given_theta, rep_ori_grid, axis = 1)
-    p_mVal_given_Val = p_mVal_given_theta[np.argsort(tools.value_function_ori(tools.stim_ori_grid, type))]
-
-    return p_mVal_given_theta0, p_mVal_given_Val
+    # Coverting probability densities to the unequely spaced stim_val_grid space.
+    # This next line of code might seem wrong but it is probably right.
+    stim_val_grid, p_mVal_given_val = tools.ori_to_val_dist(stim_ori_grid, p_mVal_given_theta, type)
+    # mVal is on equally spaced grid but val from p_mVal_given_val is on distorted stim_val_grid
+    return p_mVal_given_theta0, p_mVal_given_val
 
 # Take input orientation and gives the decoded distribution
-def value_bayesian_decoding(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
+def value_bayesian_decoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = 0.0):
 
-    p_mVal_given_theta0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, type, line_frac = line_frac)
+    # Val_encoded gives dists on equally sized grid for the rep_val dimension but the stim_val dimension 
+    # is unequally spaced according to stim_val_grid
+    p_mVal_given_theta0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = line_frac)
     
+    stim_val_grid, prior_val = tools.prior_val(type)
     # stim_val_grid*rep_val_grid
-    p_val_given_mVal = p_mVal_given_Val*np.array(tools.prior_val(type)[1])[:, np.newaxis]
+    p_val_given_mVal = p_mVal_given_Val*np.array(prior_val)[:, np.newaxis]
 
-    stim_val_grid = tools.prior_val(type)[0]
-    # Normalizefirst dimension with stim_val_grid elements coming from prior
+    # Normalize first dimension with stim_val_grid elements coming from prior
     p_val_given_mVal = p_val_given_mVal / abs(trapezoid(p_val_given_mVal, stim_val_grid, axis=0)[np.newaxis,:])
 
     # theta0 x theta_tilde x m
     p_value_est_given_val0 = p_mVal_given_theta0[:, np.newaxis, :] * p_val_given_mVal[np.newaxis, ...]
-    # Get rid of m
+    # Get rid of rep val m's which are equally spaced
     p_value_est_given_val0 = abs(trapezoid(p_value_est_given_val0, rep_val_grid, axis=2))
 
     # normalize (99% sure that not necessary)
     p_value_est_given_val0 /= abs(trapezoid(p_value_est_given_val0, stim_val_grid, axis=1)[:, np.newaxis])
 
-    return rep_val_grid, stim_val_grid, p_value_est_given_val0
+    return stim_val_grid, p_value_est_given_val0
 
-def safe_value_dist(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
+def safe_value_dist(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = 0.0):
 
-    rep_val_grid, safe_value, safe_prob = value_bayesian_decoding(theta0, kappa_s, kappa_r, type, line_frac = line_frac)
+    safe_value, safe_prob = value_bayesian_decoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = line_frac)
 
     return safe_value, safe_prob
 
-def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, line_frac = 0.0):
+def risky_value_dist(theta1, kappa_s, kappa_r, sigma_rep, risk_prob, type, line_frac = 0.0):
 
-    stim_val_grid, p_value_est_given_val0 = safe_value_dist(theta1, kappa_s, kappa_r, type, line_frac = line_frac)
+    stim_val_grid, p_value_est_given_val0 = safe_value_dist(theta1, kappa_s, kappa_r, sigma_rep, type, line_frac = line_frac)
 
     risky_value = stim_val_grid*risk_prob
     p_risky = p_value_est_given_val0/risk_prob

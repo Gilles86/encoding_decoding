@@ -42,7 +42,7 @@ def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
 
     return p_m_given_theta0, p_m_given_theta
 
-# Take input orientation and gives the decoded distribution
+# Take input orientation and gives the decoded distribution in original stim_ori_grid equal spaced grid
 def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
     p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
     # Multiply with contextual prior on thetas to get posterior
@@ -106,7 +106,7 @@ def wei_bias(theta0, kappa_s, kappa_r, normalize = True):
 
     return bias_mean
 
-
+# Gives new value grid and probability on this new value grid
 def safe_value_dist(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
 
     p_stim = bayesian_decoding(theta0, kappa_s, kappa_r)

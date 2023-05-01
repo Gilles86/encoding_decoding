@@ -9,6 +9,8 @@ from scipy.optimize import minimize
 # Settings for all code experiments. setting paradigm
 encoding_prior_used = "wei" #"steep", #wei
 contextual_prior = "uniform"
+scaling = 1.5 # thIS IS if scaled_prior mapping is used.
+
 experimentRange = "00to180" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
@@ -46,12 +48,10 @@ if encoding_prior_used == "wei": # generates prior of 2-abs(sin(x))
     steepnessFactor = addedFactor*0.5
 
 # Getting a value function given a grid of orientations (stim_ori_grid for example). Always between 0 and 2pi.
+# As assumed in analytical solutions, G = G' mapping
 def value_function_ori(x, type, line_frac = 0):
     x = np.array(x)
     line = abs(stim_ori_grid/np.pi/2.*factor_val - max_val)*line_frac
-
-    if type == "linearIncrease":
-        value_function = min_val + abs((max_val-min_val)*(x-displace)/2/np.pi)
     
     if type == "cdf_prior":
         value_function = np.zeros_like(x)
@@ -59,14 +59,21 @@ def value_function_ori(x, type, line_frac = 0):
         value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
         value_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
 
-    if type == "increasingSin":
-        value_function = min_val + factor_val*np.sin(x/6.)      
-
-    if type == "inversePrior":
+    if type == "scaled_cdf":
         value_function = np.zeros_like(x)
-        value_function[(x < np.pi/2) | (x>2*np.pi)] = min_val + ((max_val-min_val)/4)*(np.sin(x[(x < np.pi/2) | (x>2*np.pi)])) + 3*displace/(2*np.pi)*factor_val
-        value_function[(x >= np.pi/2) & (x <= 3*np.pi/2)] = min_val + ((max_val-min_val)/4)*(2 - np.sin(x[(x >= np.pi/2) & (x <= 3*np.pi/2)])) - displace/(2*np.pi)*factor_val
-        value_function[(x > 3*np.pi/2) & (x<=2*np.pi)] = ((max_val-min_val)/4)*(np.sin(x[(x > 3*np.pi/2) & (x<=2*np.pi)])) + max_val - displace/(2*np.pi)*factor_val
+        value_function[x > 2*np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        value_function[x <= np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val 
+        value_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor*scaling)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*scaling*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val
+
+    if type == "linearIncrease":
+        value_function = min_val + abs((max_val-min_val)*(x-displace)/2/np.pi)
+
+    if type == "linearDecrease":
+        value_function = max_val -abs((max_val-min_val)*(x-displace)/2/np.pi)
+
+    if type == "increasingSin":
+        value_function = min_val + factor_val*np.sin(x/4.)      
+
 
     order = np.argsort(value_function)[::-1]
     value_function = value_function*(1-line_frac)+line[order]
@@ -76,6 +83,7 @@ def value_function_ori(x, type, line_frac = 0):
 
 
 # Calculate how often distribution 1 is larger than distribution 2
+# When both stimuli are gabors
 def diff_dist(grid, p1, p2):
     p = []
 
@@ -166,7 +174,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
         # The last dimension of p which gives probability is stretched for new grid
         ps[...,:] = ps[...,:]/grad_val
 
-    # If the function is not monotonic, we use histograms
+    # If the function is not monotonic and differentiable, we use histograms
     else:
         # For every bin in x_stim, calculate the probability mass within that bin
         dx = x_stim[..., 1:] - x_stim[..., :-1]
@@ -196,6 +204,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
     return bin_centers, ps
 
 # Prior here dictates the encoding of orientations and the cdf which governs the encoding transformation.
+# Based on accuracy maximized codes that we propogate during training. 
 def prior_ori(x):
     if experimentRange == "00to180" or experimentRange == "45to225":
         return (addedFactor - np.abs(steepnessFactor*np.sin(x))) / (-4*steepnessFactor + 2*addedFactor*np.pi)# return (2 - np.abs(np.sin(x))) / (np.pi - 1) / 4.0
@@ -213,12 +222,15 @@ def cdf_ori(x, grid): # goes from 0 to 2pi
 def context_prior_ori(x):
     if contextual_prior == "uniform":
         return np.repeat(1/(2.*np.pi), len(x))
+    if contextual_prior == "gaussian":
+        return ss.vonmises(loc=np.pi, kappa=0.5).pdf(x)
     if contextual_prior == "increasing":
         return (np.pi+x)/(2*(np.pi**2))
     if contextual_prior == "decreasing":
         return (3*np.pi-x)/(2*(np.pi**2))
 
-# Getting a prior over values given a orientation grid and a type
+# Getting a prior over values given a orientation grid and a type, we can use the contextual prior over ori here only because the training was donje with
+# 0 noise conditions
 def prior_val(type, line_frac = 0):
     p_ori = context_prior_ori(stim_ori_grid)
     # Probability on each point of ori grid can be converted to probability on val grid points.

@@ -33,11 +33,6 @@ def MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False):
     # p_mOri_given_theta0 = np.sum(p_mOri_given_theta0, axis=1)
 
 
-    # Combine sensory and stimulus noise
-    p_mOri_given_theta0 = p_mOri_given_theta * p_theta_given_theta0[..., np.newaxis]
-    p_mOri_given_theta0 = trapezoid(p_mOri_given_theta0, stim_ori_grid, axis=1)
-    # p_mOri_given_theta0 = np.sum(p_mOri_given_theta0, axis=1)
-
     # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
     p_mOri_given_theta = tools.stimulus_ori_noise(stim_ori_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_ori_grid[np.newaxis, :])[
                           ..., np.newaxis] * \

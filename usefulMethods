@@ -68,6 +68,28 @@ def value_function_ori(x, type, line_frac = 0):
         value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
         value_function[(x > np.pi) & (x < 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x < 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x < 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
 
+    if type == "scaled_cdf":
+        value_function = np.zeros_like(x)
+        value_function[x > 2*np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        value_function[x <= np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val 
+        value_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor*scaling)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*scaling*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val
+
+    if type == "inverse_cdf":
+        cdf_function = np.zeros_like(x)
+        cdf_function[x > 2*np.pi] = (((steepnessFactor)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        cdf_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
+        cdf_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
+        distance = (cdf_function - (factor_val*x/2/np.pi + min_val))/np.sqrt(2)
+        value_function = (factor_val*x/2/np.pi + min_val) - distance
+    
+    if type == "curved_cdf":
+        cdf_function = np.zeros_like(x)
+        value_function = np.sin(x*2) + factor_val*x/2/np.pi + min_val
+
+    if type == "scaled_curved_cdf":
+        cdf_function = np.zeros_like(x)
+        value_function = scaling*np.sin(x*2) + factor_val*x/2/np.pi + min_val
+
     if type == "increase_cdf_prior":  # makes probabilities over values linearly increasing
         value_function = np.zeros_like(x)
         value_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*x[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)

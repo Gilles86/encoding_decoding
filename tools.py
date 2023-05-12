@@ -7,14 +7,17 @@ import scipy.stats as ss
 from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
-encoding_prior_used = "wei" #"steep", #wei
 contextual_prior = "uniform"
-scaling = 1.5 # thIS IS if scaled_prior mapping is used.
+scaling = 1.7 # THIS IS if scaled_prior mapping is used.
+
+encoding_prior_used = "wei" #"steep", #wei
 
 experimentRange = "00to180" #"00to180" # "45to225"
 max_val = 42
 min_val = 2
 
+
+# Fixed stuff
 factor_val = max_val - min_val
 
 if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "00to90":
@@ -64,6 +67,22 @@ def value_function_ori(x, type, line_frac = 0):
         value_function[x > 2*np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
         value_function[x <= np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val 
         value_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor*scaling)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*scaling*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val
+
+    if type == "inverse_cdf":
+        cdf_function = np.zeros_like(x)
+        cdf_function[x > 2*np.pi] = (((steepnessFactor)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        cdf_function[x <= np.pi] = (((steepnessFactor)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val 
+        cdf_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor) - steepnessFactor/(2*np.pi*addedFactor-4*steepnessFactor))*factor_val+min_val-displace/(2*np.pi)*factor_val
+        distance = (cdf_function - (factor_val*x/2/np.pi + min_val))/np.sqrt(2)
+        value_function = (factor_val*x/2/np.pi + min_val) - distance
+    
+    if type == "curved_cdf":
+        cdf_function = np.zeros_like(x)
+        value_function = np.sin(x*2) + factor_val*x/2/np.pi + min_val
+
+    if type == "prior":
+        cdf_function = np.zeros_like(x)
+        value_function = -np.sin(x*2) + factor_val*x/2/np.pi + min_val
 
     if type == "linearIncrease":
         value_function = min_val + abs((max_val-min_val)*(x-displace)/2/np.pi)
@@ -126,7 +145,8 @@ def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
     indifference_point = -intercept_est/slope_est
 
     rnp = safe_payoff / indifference_point
-    return rnp
+    return rnp, slope_est
+
 
 def inverse_monotonic(y_0, type, line_frac = 0):
     x = stim_ori_grid
@@ -163,7 +183,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
     if p_stim.ndim == 1:
         p_stim = p_stim[np.newaxis,:]
 
-    # If the transformation is monotonic, then we can simply use the formula P(x)dx = P(y)dy for probabilities
+    # If the transformation is monotonic and differentiable, then we can simply use the formula P(x)dx = P(y)dy for probabilities
     # This can be seen as ps = pstim*(d_stim/d_val)
     # also the grid just gets tranformed accorindg to the transformation function
     if monotonic:

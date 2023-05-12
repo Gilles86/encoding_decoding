@@ -11,7 +11,7 @@ import tools as tools
 stim_ori_grid = tools.stim_ori_grid
 rep_ori_grid = tools.rep_ori_grid
 
-# Take input orientation and gives the decoded distribution
+# Take input orientation and gives the encoded distribution
 def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
     theta0 = np.atleast_1d(theta0)
     

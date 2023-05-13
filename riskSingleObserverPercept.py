@@ -64,10 +64,53 @@ def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
 
     return p_thetaest_given_theta0
 
+def bayesian_decoding_p(theta0, kappa_s, kappa_r, p_exp=2, normalize = False):
+
+    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
+    
+    # theta x m
+    p_theta_given_m = p_m_given_theta * tools.context_prior_ori(stim_ori_grid)[:, np.newaxis]
+    p_theta_given_m = p_theta_given_m / trapezoid(p_theta_given_m, stim_ori_grid, axis=0)[np.newaxis, :]
+
+    stim_ori_grid_complex = np.exp(1j*stim_ori_grid)
+    x0 = np.angle(trapezoid(stim_ori_grid_complex[:, np.newaxis]*p_theta_given_m, stim_ori_grid, axis=0))  % (2*np.pi)
+    if p_exp == 2:
+        theta_estimates = x0
+    else:
+        # cost_function = lambda thetaest: np.sum(p_theta_given_m * (1 - np.cos(stim_ori_grid[:, np.newaxis] - thetaest[np.newaxis, :]))**(p_exp/2))
+        # jacobian = lambda thetaest:  -np.diag(np.sum(p_theta_given_m * (.5 * p_exp * np.sin(stim_ori_grid[:, np.newaxis] - thetaest[np.newaxis, :]) * (1 - np.cos(stim_ori_grid[:, np.newaxis] - thetaest[np.newaxis, :]))**(p_exp/2 - 1)), 0))
+
+        theta_estimates = []
+        for ix in range(len(x0)):
+            cost_function = lambda thetaest: np.sum(p_theta_given_m[:, ix] * (1 - np.cos(stim_ori_grid - thetaest))**(p_exp/2))
+            jacobian = lambda thetaest: -np.sum(p_theta_given_m[:, ix] * (.5 * p_exp * np.sin(stim_ori_grid - thetaest) * (1 - np.cos(stim_ori_grid - thetaest))**(p_exp/2 - 1)))
+
+            x = minimize(cost_function, x0[ix], method='BFGS', jac=jacobian).x[0]
+            theta_estimates.append(x)
+        
+        theta_estimates = np.array(theta_estimates)
+
+    problem_ix = np.where(np.diff(theta_estimates) < 0.0)
+    # problem_ix = np.where(theta_estimates[0:10] > np.pi)
+    theta_estimates[problem_ix] = theta_estimates[problem_ix] - 2*np.pi
+
+    grad_val = np.abs(np.gradient(theta_estimates, rep_ori_grid))
+
+    p_thetaest_given_theta0 = p_m_given_theta0 / grad_val[np.newaxis, :]
+
+    p_thetaest_given_theta0 = np.array([np.interp(stim_ori_grid, theta_estimates, p_thetaest_given_theta0[ix], period=2*np.pi) for ix in range(len(p_thetaest_given_theta0))])
+
+    return p_thetaest_given_theta0
+    
 
 # Takes in orientation and gives mean decoded orientation
 def expected_thetahat_theta0(theta0, kappa_s, kappa_r, normalize = False):
     p_thetaest_given_theta0 = bayesian_decoding(theta0, kappa_s, kappa_r, normalize)
+    return np.angle(trapezoid(np.exp(1j*stim_ori_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_ori_grid, axis=1)) % (2*np.pi)
+
+def expected_thetahat_theta0_p(theta0, kappa_s, kappa_r, p_exp=2., normalize = False):
+    p_thetaest_given_theta0 = bayesian_decoding_p(theta0, kappa_s, kappa_r, p_exp=p_exp, normalize=normalize)
+
     return np.angle(trapezoid(np.exp(1j*stim_ori_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_ori_grid, axis=1)) % (2*np.pi)
     # return np.angle(np.sum(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, axis=1)) % (2*np.pi)
 
@@ -107,9 +150,9 @@ def wei_bias(theta0, kappa_s, kappa_r, normalize = True):
     return bias_mean
 
 # Gives new value grid and probability on this new value grid
-def safe_value_dist(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
+def safe_value_dist(theta0, kappa_s, kappa_r, type, p_exp = 2.0, line_frac = 0.0):
 
-    p_stim = bayesian_decoding(theta0, kappa_s, kappa_r)
+    p_stim = bayesian_decoding_p(theta0, kappa_s, kappa_r, p_exp = p_exp)
 
     safe_value, safe_prob = tools.ori_to_val_dist(stim_ori_grid, p_stim, type, line_frac = line_frac)
 
@@ -117,9 +160,9 @@ def safe_value_dist(theta0, kappa_s, kappa_r, type, line_frac = 0.0):
 
     return safe_value, safe_prob
 
-def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, line_frac = 0.0):
+def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, p_exp = 2.0, line_frac = 0.0):
 
-    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type, line_frac = line_frac)
+    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type, p_exp = p_exp, line_frac = line_frac)
 
     risky_value = x_value*risk_prob
     p_risky = p_value/risk_prob

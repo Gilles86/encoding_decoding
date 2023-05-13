@@ -99,7 +99,19 @@ def value_function_ori(x, type, line_frac = 0):
 
     return value_function
 
+# To identify how often is a distribution greater than a point (median analysis)
+def dist_greater(grid, p, v): # v should lie on the grid
+    p = np.squeeze(p)
+    p = p[np.argsort(grid)]
+    grid = np.sort(grid)
 
+    # grid: 1d
+    # p1/p2: n_orienations x n(grid)
+    cdf = integrate.cumtrapz(p, grid, initial=0.0, axis=-1)
+
+    cdf_v = cdf[grid <= v][-1]
+    p_dist_greater = 1 - cdf_v
+    return p_dist_greater
 
 # Calculate how often distribution 1 is larger than distribution 2
 # When both stimuli are gabors

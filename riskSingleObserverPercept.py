@@ -11,8 +11,8 @@ import tools as tools
 stim_ori_grid = tools.stim_ori_grid
 rep_ori_grid = tools.rep_ori_grid
 
-# Take input orientation and gives the encoded distribution
-def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
+# Take input orientation according to experimenter and gives the encoded distribution
+def MI_efficient_encoding(theta0, kappa_s, kappa_r):
     theta0 = np.atleast_1d(theta0)
     
     # theta0 x theta_gen x m_gen
@@ -27,23 +27,108 @@ def MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize = False):
     p_m_given_theta0 = p_m_given_theta * p_theta_given_theta0[..., np.newaxis]
     p_m_given_theta0 = trapezoid(p_m_given_theta0, stim_ori_grid, axis=1)
     # p_m_given_theta0 = np.sum(p_m_given_theta0, axis=1)
+    return p_m_given_theta0
 
+# subject's bayesian decoding mechanism for given representation m (done right now for all possible m's)
+# theta_estimates gives where all rep_ori_grid points end up
+def subject_theta_estimate(kappa_s, kappa_r, p_per=8, normalize = False):
+
+    ## This one is used by subject for their bayesian decoded theta_estimate
     # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
     p_m_given_theta = tools.stimulus_ori_noise(stim_ori_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_ori_grid[np.newaxis, :])[
                           ..., np.newaxis] * \
                       tools.sensory_ori_noise(tools.cdf_ori(stim_ori_grid, stim_ori_grid)[np.newaxis, :, np.newaxis], kappa_r=kappa_r,
                                     grid=rep_ori_grid[np.newaxis, np.newaxis, :])
     p_m_given_theta = trapezoid(p_m_given_theta, stim_ori_grid, axis=1)
-    # p_m_given_theta = np.sum(p_m_given_theta, axis=1)
 
     if normalize:
-        # p_m_given_theta /= trapezoid(p_m_given_theta, stim_grid, axis=1)[:, np.newaxis, :]
         p_m_given_theta /= trapezoid(p_m_given_theta, rep_ori_grid, axis=1)[:, np.newaxis]
+    
+    # theta x m (subject's bayesian decode)
+    p_theta_given_m = p_m_given_theta * tools.context_prior_ori(stim_ori_grid)[:, np.newaxis]
+    p_theta_given_m = p_theta_given_m / trapezoid(p_theta_given_m, stim_ori_grid, axis=0)[np.newaxis, :]
 
-    return p_m_given_theta0, p_m_given_theta
+    stim_ori_grid_complex = np.exp(1j*stim_ori_grid)
+    x0 = np.angle(trapezoid(stim_ori_grid_complex[:, np.newaxis]*p_theta_given_m, stim_ori_grid, axis=0))  % (2*np.pi)
+    if p_per == 2:
+        theta_estimates = x0
+    else:
+        theta_estimates = []
+        for ix in range(len(x0)):
+            cost_function = lambda thetaest: np.sum(p_theta_given_m[:, ix] * (1 - np.cos(stim_ori_grid - thetaest))**(p_per/2))
+            jacobian = lambda thetaest: -np.sum(p_theta_given_m[:, ix] * (.5 * p_per * np.sin(stim_ori_grid - thetaest) * (1 - np.cos(stim_ori_grid - thetaest))**(p_per/2 - 1)))
 
+            x = minimize(cost_function, x0[ix], method='BFGS', jac=jacobian).x[0]
+            theta_estimates.append(x)
+        
+        theta_estimates = np.array(theta_estimates)
+
+    return theta_estimates
+
+# Given that a noisy encoding of stimulus was ensued and given that theta_estimates gives exact points where 
+# each point in the bayesian observer's brain ends up. 
+def experimenter_theta_obs(theta0, kappa_s, kappa_r, p_per=8, normalize = False):
+
+    p_m_given_theta0 = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
+    theta_estimates = subject_theta_estimate(kappa_s, kappa_r, p_per = p_per, normalize = normalize)
+
+    # The theta_estimates are monotonically related to the given input theta_represnetations except at the first few places.
+    # We just remove these before transforming probabilities since otherwise, we would have to use the 
+    # numerical histogram solution rather than simple analytical transformation of probabilties formula.
+    problem_ix = np.where(np.diff(theta_estimates) < 0.0)
+    theta_estimates[problem_ix] = theta_estimates[problem_ix] - 2*np.pi
+
+    # We do the analytical formula for perception as mostly it is a monotonic differntiable transformation
+    grad_val = np.abs(np.gradient(theta_estimates, rep_ori_grid))
+
+    p_thetaest_given_theta0 = p_m_given_theta0 / grad_val[np.newaxis, :]
+
+    p_thetaest_given_theta0 = np.array([np.interp(stim_ori_grid, theta_estimates, p_thetaest_given_theta0[ix], period=2*np.pi) for ix in range(len(p_thetaest_given_theta0))])
+
+    return p_thetaest_given_theta0
+
+def experimenter_expected_thetahat(theta0, kappa_s, kappa_r, p_per=8, normalize = False):
+    p_thetaest_given_theta0 = experimenter_theta_obs(theta0, kappa_s, kappa_r, p_per=p_per, normalize=normalize)
+
+    return np.angle(trapezoid(np.exp(1j*stim_ori_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_ori_grid, axis=1)) % (2*np.pi)
+    # return np.angle(np.sum(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, axis=1)) % (2*np.pi)
+
+# experimentally observed distribution of value estimates with perceptual model
+def safe_value_dist(theta0, kappa_s, kappa_r, type, p_per = 8):
+
+    p_stim = experimenter_theta_obs(theta0, kappa_s, kappa_r, p_per = p_per)
+
+    safe_value, safe_prob = tools.ori_to_val_dist(stim_ori_grid, p_stim, type)
+
+    safe_prob /= abs(trapezoid(safe_prob, safe_value, axis = -1)[:, np.newaxis])
+
+    return safe_value, safe_prob
+
+def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, p_per = 8):
+
+    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type, p_per = p_per)
+
+    risky_value = x_value*risk_prob
+    p_risky = p_value/risk_prob
+    p_risky_ = interpolate.interp1d(risky_value, p_risky, bounds_error=False, fill_value=0)
+    p_risky = p_risky_(x_value)
+
+    return x_value, p_risky
+
+
+
+
+
+
+
+
+
+
+
+## Earlier version 
 # Take input orientation and gives the decoded distribution in original stim_ori_grid equal spaced grid
 def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
+
     p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
     # Multiply with contextual prior on thetas to get posterior
     p_theta_given_m = p_m_given_theta * tools.context_prior_ori(stim_ori_grid)[:, np.newaxis]
@@ -64,55 +149,10 @@ def bayesian_decoding(theta0, kappa_s, kappa_r, normalize = False):
 
     return p_thetaest_given_theta0
 
-def bayesian_decoding_p(theta0, kappa_s, kappa_r, p_exp=2, normalize = False):
-
-    p_m_given_theta0, p_m_given_theta = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
-    
-    # theta x m
-    p_theta_given_m = p_m_given_theta * tools.context_prior_ori(stim_ori_grid)[:, np.newaxis]
-    p_theta_given_m = p_theta_given_m / trapezoid(p_theta_given_m, stim_ori_grid, axis=0)[np.newaxis, :]
-
-    stim_ori_grid_complex = np.exp(1j*stim_ori_grid)
-    x0 = np.angle(trapezoid(stim_ori_grid_complex[:, np.newaxis]*p_theta_given_m, stim_ori_grid, axis=0))  % (2*np.pi)
-    if p_exp == 2:
-        theta_estimates = x0
-    else:
-        # cost_function = lambda thetaest: np.sum(p_theta_given_m * (1 - np.cos(stim_ori_grid[:, np.newaxis] - thetaest[np.newaxis, :]))**(p_exp/2))
-        # jacobian = lambda thetaest:  -np.diag(np.sum(p_theta_given_m * (.5 * p_exp * np.sin(stim_ori_grid[:, np.newaxis] - thetaest[np.newaxis, :]) * (1 - np.cos(stim_ori_grid[:, np.newaxis] - thetaest[np.newaxis, :]))**(p_exp/2 - 1)), 0))
-
-        theta_estimates = []
-        for ix in range(len(x0)):
-            cost_function = lambda thetaest: np.sum(p_theta_given_m[:, ix] * (1 - np.cos(stim_ori_grid - thetaest))**(p_exp/2))
-            jacobian = lambda thetaest: -np.sum(p_theta_given_m[:, ix] * (.5 * p_exp * np.sin(stim_ori_grid - thetaest) * (1 - np.cos(stim_ori_grid - thetaest))**(p_exp/2 - 1)))
-
-            x = minimize(cost_function, x0[ix], method='BFGS', jac=jacobian).x[0]
-            theta_estimates.append(x)
-        
-        theta_estimates = np.array(theta_estimates)
-
-    problem_ix = np.where(np.diff(theta_estimates) < 0.0)
-    # problem_ix = np.where(theta_estimates[0:10] > np.pi)
-    theta_estimates[problem_ix] = theta_estimates[problem_ix] - 2*np.pi
-
-    grad_val = np.abs(np.gradient(theta_estimates, rep_ori_grid))
-
-    p_thetaest_given_theta0 = p_m_given_theta0 / grad_val[np.newaxis, :]
-
-    p_thetaest_given_theta0 = np.array([np.interp(stim_ori_grid, theta_estimates, p_thetaest_given_theta0[ix], period=2*np.pi) for ix in range(len(p_thetaest_given_theta0))])
-
-    return p_thetaest_given_theta0
-    
-
 # Takes in orientation and gives mean decoded orientation
 def expected_thetahat_theta0(theta0, kappa_s, kappa_r, normalize = False):
     p_thetaest_given_theta0 = bayesian_decoding(theta0, kappa_s, kappa_r, normalize)
     return np.angle(trapezoid(np.exp(1j*stim_ori_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_ori_grid, axis=1)) % (2*np.pi)
-
-def expected_thetahat_theta0_p(theta0, kappa_s, kappa_r, p_exp=2., normalize = False):
-    p_thetaest_given_theta0 = bayesian_decoding_p(theta0, kappa_s, kappa_r, p_exp=p_exp, normalize=normalize)
-
-    return np.angle(trapezoid(np.exp(1j*stim_ori_grid[np.newaxis, :])*p_thetaest_given_theta0, stim_ori_grid, axis=1)) % (2*np.pi)
-    # return np.angle(np.sum(np.exp(1j*stim_grid[np.newaxis, :])*p_thetaest_given_theta0, axis=1)) % (2*np.pi)
 
 # NOW WEI AND STOCKER code
 def wei_theta_m_subject(theta0, kappa_s, kappa_r, normalize = True):
@@ -148,25 +188,3 @@ def wei_bias(theta0, kappa_s, kappa_r, normalize = True):
         bias_mean[i] = bias_mean[i] - stim_ori_grid[i]
 
     return bias_mean
-
-# Gives new value grid and probability on this new value grid
-def safe_value_dist(theta0, kappa_s, kappa_r, type, p_exp = 2.0, line_frac = 0.0):
-
-    p_stim = bayesian_decoding_p(theta0, kappa_s, kappa_r, p_exp = p_exp)
-
-    safe_value, safe_prob = tools.ori_to_val_dist(stim_ori_grid, p_stim, type, line_frac = line_frac)
-
-    safe_prob /= abs(trapezoid(safe_prob, safe_value, axis = -1)[:, np.newaxis])
-
-    return safe_value, safe_prob
-
-def risky_value_dist(theta1, kappa_s, kappa_r, risk_prob, type, p_exp = 2.0, line_frac = 0.0):
-
-    x_value, p_value = safe_value_dist(theta1, kappa_s, kappa_r, type, p_exp = p_exp, line_frac = line_frac)
-
-    risky_value = x_value*risk_prob
-    p_risky = p_value/risk_prob
-    p_risky_ = interpolate.interp1d(risky_value, p_risky, bounds_error=False, fill_value=0)
-    p_risky = p_risky_(x_value)
-
-    return x_value, p_risky

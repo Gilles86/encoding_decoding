@@ -8,6 +8,7 @@ from scipy.stats import gaussian_kde
 from sklearn.neighbors import KernelDensity
 
 import tools as tools
+import riskSingleObserverValuation as valuation
 
 stim_ori_grid = tools.stim_ori_grid
 rep_ori_grid = tools.rep_ori_grid
@@ -15,7 +16,7 @@ rep_ori_grid = tools.rep_ori_grid
 rep_val_grid = tools.rep_val_grid
 
 # Take input orientation and gives the encoded distribution
-def MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False):
+def MI_orientation_encoding(theta0, kappa_s, kappa_r):
 
     theta0 = np.atleast_1d(theta0)
     # theta0 x theta_gen x m_gen
@@ -32,63 +33,18 @@ def MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False):
     p_mOri_given_theta0 = trapezoid(p_mOri_given_theta0, stim_ori_grid, axis=1)
     # p_mOri_given_theta0 = np.sum(p_mOri_given_theta0, axis=1)
 
-
-    # Make a big array that for many thetas gives the probability of observing ms (subject likelihood)
-    p_mOri_given_theta = tools.stimulus_ori_noise(stim_ori_grid[:, np.newaxis], kappa_s=kappa_s, grid=stim_ori_grid[np.newaxis, :])[
-                          ..., np.newaxis] * \
-                      tools.sensory_ori_noise(tools.cdf_ori(stim_ori_grid, stim_ori_grid)[np.newaxis, :, np.newaxis], kappa_r=kappa_r,
-                                    grid=rep_ori_grid[np.newaxis, np.newaxis, :])
-    p_mOri_given_theta = trapezoid(p_mOri_given_theta, stim_ori_grid, axis=1)
-    # p_m_given_theta = np.sum(p_m_given_theta, axis=1)
-
-    if normalize:
-        # p_m_given_theta /= trapezoid(p_m_given_theta, stim_grid, axis=1)[:, np.newaxis, :]
-        p_mOri_given_theta /= trapezoid(p_mOri_given_theta, rep_ori_grid, axis=1)[:, np.newaxis]
-
-    # The mOri probabilities are on equally sized grids.
-    return p_mOri_given_theta0, p_mOri_given_theta
-
-def val_encoded(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = 0):
-    # tHESE probabilities are on uniformly spaced rep_val_grid
-    p_mOri_given_theta0, p_mOri_given_theta = MI_orientation_encoding(theta0, kappa_s, kappa_r, normalize = False)
-
-    #p_mOri_given_theta0 is 1*rep_ori_grid. Each of the rep_ori_grid creates a noise value representation
-    mVal = tools.value_function_ori(rep_ori_grid, type, line_frac = line_frac)
-    # 1*uniform rep_ori_grid * uniform rep_val_grid
-    p_mVal_given_theta0 = p_mOri_given_theta0[..., np.newaxis] * tools.sensory_val_noise(mVal[np.newaxis,:, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
-    p_mVal_given_theta0 = trapezoid(p_mVal_given_theta0, rep_ori_grid, axis = 1)
-
-    # Now for all possible thetas
-    p_mVal_given_theta = p_mOri_given_theta[..., np.newaxis] * tools.sensory_val_noise(mVal[np.newaxis,:, np.newaxis], sigma_rep, rep_val_grid[np.newaxis, np.newaxis, :])
-    # Size now is converted to stim_ori_grid * rep_val_grid, both are uniformly spaced
-    p_mVal_given_theta = trapezoid(p_mVal_given_theta, rep_ori_grid, axis = 1)
-    # Coverting probability densities to the unequely spaced stim_val_grid space.
-    # This next line of code might seem wrong but it is probably right.
-    stim_val_grid, p_mVal_given_val = tools.ori_to_val_dist(stim_ori_grid, p_mVal_given_theta, type)
-    # mVal is on equally spaced grid but val from p_mVal_given_val is on distorted stim_val_grid
-    return p_mVal_given_theta0, p_mVal_given_val
+    return p_mOri_given_theta0
 
 # Take input orientation and gives the decoded distribution
-def value_bayesian_decoding(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = 0.0):
+def value_bayesian_decoding(theta0, kappa_s, kappa_r, sigma_rep, type):
 
-    # Val_encoded gives dists on equally sized grid for the rep_val dimension but the stim_val dimension 
-    # is unequally spaced according to stim_val_grid
-    p_mVal_given_theta0, p_mVal_given_Val = val_encoded(theta0, kappa_s, kappa_r, sigma_rep, type, line_frac = line_frac)
-    
-    stim_val_grid, prior_val = tools.prior_val(type)
-    # stim_val_grid*rep_val_grid
-    p_val_given_mVal = p_mVal_given_Val*np.array(prior_val)[:, np.newaxis]
+    # Getting encoded orientation
+    p_mOri_given_theta0 = MI_orientation_encoding(theta0, kappa_s, kappa_r)
 
-    # Normalize first dimension with stim_val_grid elements coming from prior
-    p_val_given_mVal = p_val_given_mVal / abs(trapezoid(p_val_given_mVal, stim_val_grid, axis=0)[np.newaxis,:])
+    # encoded orientation directly maps to values in the subject's brain
+    p_mVal_given_theta0 = tools.ori_to_val_dist(rep_ori_grid, p_mOri_given_theta0, type)
+    val_estimates = valuation.subject_val_estimate(kappa_s, sigma_rep, type, p_val = p_val)
 
-    # theta0 x theta_tilde x m
-    p_value_est_given_val0 = p_mVal_given_theta0[:, np.newaxis, :] * p_val_given_mVal[np.newaxis, ...]
-    # Get rid of rep val m's which are equally spaced
-    p_value_est_given_val0 = abs(trapezoid(p_value_est_given_val0, rep_val_grid, axis=2))
-
-    # normalize (99% sure that not necessary)
-    p_value_est_given_val0 /= abs(trapezoid(p_value_est_given_val0, stim_val_grid, axis=1)[:, np.newaxis])
 
     return stim_val_grid, p_value_est_given_val0
 

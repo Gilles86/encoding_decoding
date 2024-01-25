@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 
 # Settings for all code experiments. setting paradigm
 contextual_prior = "uniform"
-scaling = 1.7 # THIS IS if scaled_prior mapping is used.
+scaling = 1.5 # THIS IS if scaled_prior mapping is used.
 
 encoding_prior_used = "wei" #"steep", #wei
 
@@ -20,6 +20,7 @@ min_val = 2
 # Fixed stuff
 factor_val = max_val - min_val
 
+# This will impact whether there are some kind of boundary effects already in the orienatation perception or not. If the whole range is used, then no
 if experimentRange == "00to45" or experimentRange == "45to90" or experimentRange == "00to90":
     end = int(experimentRange[-2:])
     start = int(experimentRange[0:2])
@@ -52,9 +53,9 @@ if encoding_prior_used == "wei": # generates prior of 2-abs(sin(x))
 
 # Getting a value function given a grid of orientations (stim_ori_grid for example). Always between 0 and 2pi.
 # As assumed in analytical solutions, G = G' mapping
-def value_function_ori(x, type, line_frac = 0):
+def value_function_ori(x, type):
     x = np.array(x)
-    line = abs(stim_ori_grid/np.pi/2.*factor_val - max_val)*line_frac
+    # line = abs(stim_ori_grid/np.pi/2.*factor_val - max_val)*line_frac
     
     if type == "cdf_prior":
         value_function = np.zeros_like(x)
@@ -76,6 +77,14 @@ def value_function_ori(x, type, line_frac = 0):
         distance = (cdf_function - (factor_val*x/2/np.pi + min_val))/np.sqrt(2)
         value_function = (factor_val*x/2/np.pi + min_val) - distance
     
+    if type == "scaled_inverse_cdf":
+        cdf_function = np.zeros_like(x)
+        cdf_function[x > 2*np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x > 2*np.pi]+(addedFactor)*(x-np.pi)[x > 2*np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val #integrate.cumtrapz(prior_ori(x), stim_ori_grid, initial=0.0)
+        cdf_function[x <= np.pi] = (((steepnessFactor*scaling)*np.cos(x)[x <= np.pi]+(addedFactor)*(x)[x <= np.pi])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val 
+        cdf_function[(x > np.pi) & (x <= 2*np.pi)] = (((steepnessFactor*scaling)*-np.cos(x)[(x > np.pi) & (x <= 2*np.pi)]-2*scaling*steepnessFactor+(addedFactor)*(x)[(x > np.pi) & (x <= 2*np.pi)])/(2*np.pi*addedFactor-4*steepnessFactor*scaling) - steepnessFactor*scaling/(2*np.pi*addedFactor-4*steepnessFactor*scaling))*factor_val+min_val-displace/(2*np.pi)*factor_val
+        distance = (cdf_function - (factor_val*x/2/np.pi + min_val))/np.sqrt(2)
+        value_function = (factor_val*x/2/np.pi + min_val) - distance
+
     if type == "curved_cdf":
         cdf_function = np.zeros_like(x)
         value_function = np.sin(x*2) + factor_val*x/2/np.pi + min_val
@@ -94,8 +103,8 @@ def value_function_ori(x, type, line_frac = 0):
         value_function = min_val + factor_val*np.sin(x/4.)      
 
 
-    order = np.argsort(value_function)[::-1]
-    value_function = value_function*(1-line_frac)+line[order]
+    # order = np.argsort(value_function)[::-1]
+    # value_function = value_function*(1-line_frac)+line[order]
 
     return value_function
 
@@ -159,10 +168,10 @@ def get_rnp(safe_payoff, risky_payoffs, p_chose_risky, risk_prob):
     rnp = safe_payoff / indifference_point
     return rnp, slope_est
 
-
-def inverse_monotonic(y_0, type, line_frac = 0):
+# Inverse of a monotonic function
+def inverse_monotonic(y_0, type):
     x = stim_ori_grid
-    y = value_function_ori(x, type = type, line_frac = line_frac)
+    y = value_function_ori(x, type = type)
     indices = np.argsort(y)
     y_sorted = y[indices]
     
@@ -183,8 +192,8 @@ def inverse_monotonic(y_0, type, line_frac = 0):
     return x_inverse
 
 # This function takes in the original grid and the function that transforms the grid (random variable)
-# and then throws out the transformed gridwith the function and the probability density
-def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, interpolation_kind='linear'):
+# and then throws out the transformed grid with the function and the probability density
+def ori_to_val_dist(grid, p, type, bins=500, monotonic=True, interpolation_kind='linear'):
     # The last dimension of p gives the probability distribution over the original grid
     # the first dimension could refer to another variable which dictates the probability distribution
     # So for example, for different thetas we could have distributions centered differently on stim_ori_grid 
@@ -199,9 +208,9 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
     # This can be seen as ps = pstim*(d_stim/d_val)
     # also the grid just gets tranformed accorindg to the transformation function
     if monotonic:
-        x_value = value_function_ori(x_stim, type, line_frac = line_frac)
+        x_value = value_function_ori(x_stim, type)
         bin_centers = x_value
-        grad_val = abs(np.gradient(x_value, x_stim)) #grad_value_ori(x_stim, type, line_frac)
+        grad_val = abs(np.gradient(x_value, x_stim)) #grad_value_ori(x_stim, type)
         ps = p_stim
         # The last dimension of p which gives probability is stretched for new grid
         ps[...,:] = ps[...,:]/grad_val
@@ -213,7 +222,7 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
         p_mass = ((p_stim[..., 1:] + p_stim[..., :-1]) / 2) * dx
 
         # Get the center of every bin
-        x_value = value_function_ori(x_stim[:-1] + dx / 2., type, line_frac)
+        x_value = value_function_ori(x_stim[:-1] + dx / 2., type)
         ps = []
         for ix in range(len(p_stim)):
             h, edges = np.histogram(x_value, bins=bins, weights=p_mass[ix], density=True)
@@ -235,6 +244,44 @@ def ori_to_val_dist(grid, p, type, line_frac = 0.0, bins=500, monotonic=True, in
 
     return bin_centers, ps
 
+
+# Transform probability distribution over a grid of random variable to another random variable grid
+# and then extrapolate outside the new grid with 0.
+def prob_transform(grid, new_grid, p, bins=501, interpolation_kind='linear'):
+    grid = np.array(grid)
+    
+    # For every bin in x_stim, calculate the probability mass within that bin
+    dx = grid[..., 1:] - grid[..., :-1]
+    p_mass = ((p[..., 1:] + p[..., :-1]) / 2) * dx
+
+    if any(np.diff(new_grid)<=0):
+        # Get the center of every bin
+        x_value = new_grid[:-1] + dx / 2.
+        ps = []
+        for ix in range(len(p)):
+            h, edges = np.histogram(x_value, bins=bins, weights=p_mass[ix], density=True)
+            ps.append(h)
+
+        ps = np.array(ps)
+        new_grid = (edges[1:] + edges[:-1]) / 2
+
+    else: #use the monotonic transformation formula analytic one
+        ps = p
+        ps[...,:] = ps[...,:]/abs(np.gradient(new_grid, grid))
+
+    ps_new = np.zeros(ps.shape)
+    # We asssume here that the subject can never value any option outside of the val_estimates range
+    # due to perceptual effects on the grid of values. 
+    new_grid_n = np.concatenate(([np.min(new_grid)-1e-6], new_grid, [np.max(new_grid)+1e-6]), axis=0)
+    ps_new = np.concatenate((np.zeros((len(ps), 1)), ps, np.zeros((len(ps), 1))), axis=1)
+
+    f = interpolate.interp1d(new_grid_n, ps_new, axis=1,
+                                 bounds_error=False, kind=interpolation_kind, fill_value=0.0)
+    ps = f(grid)
+    ps /= abs(trapezoid(ps, grid, axis=1)[:, np.newaxis])
+
+    return grid, ps
+
 # Prior here dictates the encoding of orientations and the cdf which governs the encoding transformation.
 # Based on accuracy maximized codes that we propogate during training. 
 def prior_ori(x):
@@ -255,7 +302,7 @@ def context_prior_ori(x):
     if contextual_prior == "uniform":
         return np.repeat(1/(2.*np.pi), len(x))
     if contextual_prior == "gaussian":
-        return ss.vonmises(loc=np.pi, kappa=0.5).pdf(x)
+        return ss.vonmises(loc=np.pi, kappa=0.6).pdf(x)
     if contextual_prior == "increasing":
         return (np.pi+x)/(2*(np.pi**2))
     if contextual_prior == "decreasing":
@@ -263,19 +310,19 @@ def context_prior_ori(x):
 
 # Getting a prior over values given a orientation grid and a type, we can use the contextual prior over ori here only because the training was donje with
 # 0 noise conditions
-def prior_val(type, line_frac = 0):
+def prior_val(type):
     p_ori = context_prior_ori(stim_ori_grid)
     # Probability on each point of ori grid can be converted to probability on val grid points.
     # the value grid is just a functional transform of ori grid. stim_val_grid is simply the transform of
     #the original stim_otri_grid
-    stim_val_grid, ps = ori_to_val_dist(stim_ori_grid, p_ori, type, line_frac)
+    stim_val_grid, ps = ori_to_val_dist(stim_ori_grid, p_ori, type)
     ps = np.squeeze(ps) # Brings it back to 1 dime
     return stim_val_grid, ps
 
 
 # Takes in the orientation grid and gives out the cdf over values
-def cdf_val(type, line_frac = 0):
-    stim_val_grid, ps = prior_val(type, line_frac = line_frac)
+def cdf_val(type):
+    stim_val_grid, ps = prior_val(type)
     cdf_value = np.squeeze(integrate.cumtrapz(ps, stim_val_grid, initial=0.0))*factor_val
     return stim_val_grid, cdf_value
 
@@ -293,7 +340,7 @@ def sensory_ori_noise(m, kappa_r, grid):
     
 # Getting the noisy input stimulus distribution in value space mapping
 # Input parameters define noise in orientation space buy function gives out the noisy distribution in value space
-def stimulus_val_noise(x, kappa_s, grid, type, line_frac = 0.0):
+def stimulus_val_noise(x, kappa_s, grid, type):
     if np.isscalar(x):
         x = np.array([x])
     else:
@@ -303,7 +350,7 @@ def stimulus_val_noise(x, kappa_s, grid, type, line_frac = 0.0):
     p_noise_ori = ss.vonmises(loc=x, kappa=kappa_s).pdf(grid[np.newaxis, :])
     # The second dimension of p which hass probability over original geid gets changed to probability
     # over new grid. the new grid is also returned. The first dimension remains unchanged for ps.
-    stim_val_grid, ps = ori_to_val_dist(grid, p_noise_ori, type, line_frac = line_frac)
+    stim_val_grid, ps = ori_to_val_dist(grid, p_noise_ori, type)
 
     return stim_val_grid, ps
 

@@ -69,7 +69,7 @@ def subject_theta_estimate(kappa_s, kappa_r, p_per=8, normalize = False):
 # each point in the bayesian observer's brain ends up. 
 def experimenter_theta_obs(theta0, kappa_s, kappa_r, p_per=8, normalize = False):
 
-    p_m_given_theta0 = MI_efficient_encoding(theta0, kappa_s, kappa_r, normalize=normalize)
+    p_m_given_theta0 = MI_efficient_encoding(theta0, kappa_s, kappa_r)
     theta_estimates = subject_theta_estimate(kappa_s, kappa_r, p_per = p_per, normalize = normalize)
 
     # The theta_estimates are monotonically related to the given input theta_represnetations except at the first few places.
